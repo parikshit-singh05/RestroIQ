@@ -12,7 +12,7 @@ import { AlertCircle, RefreshCw } from 'lucide-react'
 export function Overview() {
   const historyQ = useQuery({ queryKey: ['history'], queryFn: getHistorySummary })
   const forecastQ = useQuery({ queryKey: ['forecast_summary'], queryFn: getForecastSummary })
-  const inventoryQ = useQuery({ queryKey: ['inventory', 1000], queryFn: () => getInventory(1000) })
+  const inventoryQ = useQuery({ queryKey: ['inventory', 1000], queryFn: () => getInventory(undefined, 1000) })
   const centersQ = useQuery({ queryKey: ['centers'], queryFn: getCenters })
   const mealsQ = useQuery({ queryKey: ['meals'], queryFn: getMeals })
 
