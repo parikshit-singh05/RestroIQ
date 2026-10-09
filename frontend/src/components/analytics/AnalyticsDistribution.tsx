@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { formatCompact } from '../../lib/format'
+import { PieChart as PieIcon } from 'lucide-react'
 
 export function AnalyticsDistribution({ dist }: { dist: any }) {
   const [active, setActive] = useState<'category'|'cuisine'|'center'|'city'>('category')
@@ -11,20 +12,18 @@ export function AnalyticsDistribution({ dist }: { dist: any }) {
   const total = dist.total_demand || data.reduce((s: number, d: any) => s + d.value, 0)
 
   return (
-    <div className="border border-[var(--color-hairline)] rounded-lg bg-[var(--color-surface)] p-6 mb-8 flex-1" aria-label="Demand Distribution">
-      <div className="flex flex-col md:flex-row md:items-center justify-between mb-6">
-        <div>
-          <h3 className="text-[15px] font-semibold tracking-tight">Demand Concentration</h3>
-          <p className="text-[13px] text-[var(--color-ink-secondary)] mt-0.5">
-            Distribution of observed historical demand.
-          </p>
+    <div className="border border-[var(--color-border)] rounded-xl bg-[var(--color-surface)] p-6 shadow-sm flex flex-col h-full" aria-label="Demand Distribution">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between mb-6 pb-4 border-b border-[var(--color-border-subtle)] gap-4">
+        <div className="flex items-center space-x-2">
+          <PieIcon className="w-4 h-4 text-[var(--color-accent)]" />
+          <h3 className="text-[16px] font-heading font-bold tracking-tight text-[var(--color-text)]">Demand Concentration</h3>
         </div>
-        <div className="flex bg-[rgba(20,19,15,0.03)] p-1 rounded-md mt-4 md:mt-0">
+        <div className="flex bg-[var(--color-surface-alt)] p-1 rounded-lg border border-[var(--color-border)]">
           {['category', 'cuisine', 'center', 'city'].map(t => (
             <button
               key={t}
               onClick={() => setActive(t as any)}
-              className={`px-3 py-1 text-[12px] font-medium rounded capitalize transition-all ${active === t ? 'bg-white shadow-sm text-[var(--color-ink)]' : 'text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)]'}`}
+              className={`px-3 py-1.5 text-[12px] font-bold rounded-md capitalize transition-all ${active === t ? 'bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm' : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text)]'}`}
             >
               {t}
             </button>
@@ -32,17 +31,20 @@ export function AnalyticsDistribution({ dist }: { dist: any }) {
         </div>
       </div>
       
-      <div className="space-y-3 h-[240px] overflow-y-auto custom-scrollbar pr-4">
+      <div className="space-y-4 flex-grow overflow-y-auto custom-scrollbar pr-2">
         {data.map((d: any) => (
-          <div key={d.name} className="relative">
-            <div className="flex justify-between text-[13px] mb-1">
-              <span className="font-medium text-[var(--color-ink)] truncate max-w-[200px]" title={String(d.name)}>{d.name}</span>
-              <span className="tabular-nums text-[var(--color-ink-secondary)]" title={d.value.toLocaleString('en-IN')}>
-                {formatCompact(d.value)} <span className="text-[10px] ml-1 opacity-60">({((d.value/total)*100).toFixed(1)}%)</span>
-              </span>
+          <div key={d.name} className="relative group">
+            <div className="flex justify-between items-end mb-1.5">
+              <span className="text-[13px] font-bold text-[var(--color-text)] truncate max-w-[200px]" title={String(d.name)}>{d.name}</span>
+              <div className="flex items-center space-x-2">
+                <span className="tabular-nums font-bold text-[var(--color-text-secondary)] text-[13px]" title={d.value.toLocaleString('en-IN')}>
+                  {formatCompact(d.value)}
+                </span>
+                <span className="text-[11px] font-bold text-[var(--color-accent)] bg-[var(--color-accent-subtle)] px-1.5 rounded">{((d.value/total)*100).toFixed(1)}%</span>
+              </div>
             </div>
-            <div className="h-1.5 w-full bg-[rgba(20,19,15,0.04)] rounded-full overflow-hidden">
-              <div className="h-full bg-[var(--color-ink)] rounded-full transition-all duration-500" style={{ width: `${(d.value/max)*100}%` }} />
+            <div className="h-2 w-full bg-[var(--color-surface-alt)] rounded-full overflow-hidden">
+              <div className="h-full bg-[var(--color-accent)] rounded-full transition-all duration-500 opacity-90 group-hover:opacity-100" style={{ width: `${(d.value/max)*100}%` }} />
             </div>
           </div>
         ))}

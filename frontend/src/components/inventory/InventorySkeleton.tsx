@@ -1,19 +1,26 @@
 export function InventorySkeleton() {
   return (
-    <div className="max-w-[1120px] mx-auto animate-pulse pb-16">
-      <div className="h-10 bg-[rgba(20,19,15,0.06)] rounded w-3/4 mb-4" />
-      <div className="h-32 bg-[rgba(20,19,15,0.04)] rounded-lg mb-10 w-[800px]" />
-      
-      <div className="h-4 bg-[rgba(20,19,15,0.06)] w-32 mb-4" />
-      <div className="grid grid-cols-4 gap-4 mb-10">
-        <div className="h-32 bg-[rgba(20,19,15,0.04)] rounded-lg" />
-        <div className="h-32 bg-[rgba(20,19,15,0.04)] rounded-lg" />
-        <div className="h-32 bg-[rgba(20,19,15,0.04)] rounded-lg" />
-        <div className="h-32 bg-[rgba(20,19,15,0.04)] rounded-lg" />
+    <div className="w-full animate-pulse">
+      <div className="pt-6 lg:pt-8 mb-8 max-w-[800px]">
+        <div className="h-8 w-1/3 bg-[var(--color-border)] rounded-lg mb-2" />
+        <div className="h-4 w-1/2 bg-[var(--color-border)]/50 rounded" />
       </div>
 
-      <div className="h-24 bg-[rgba(20,19,15,0.02)] rounded-lg mb-8" />
-      <div className="h-[300px] bg-[rgba(20,19,15,0.02)] rounded-lg mb-8" />
+      <div className="h-16 w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl mb-6" />
+      
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        {[1,2,3].map(i => <div key={i} className="h-28 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl" />)}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 mb-8">
+        <div className="lg:col-span-2">
+           <div className="h-[400px] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl" />
+        </div>
+        <div className="space-y-6">
+           <div className="h-[250px] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl" />
+           <div className="h-[200px] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl" />
+        </div>
+      </div>
     </div>
   )
 }

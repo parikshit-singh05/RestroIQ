@@ -1,75 +1,40 @@
-import { useState, useMemo } from 'react'
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from 'recharts'
-import type { DetailedForecast } from '../../lib/types'
-import { formatAxisTick } from '../../lib/format'
+import { useMemo } from 'react'
 
-interface Props {
-  data: DetailedForecast[]
-}
-
-export function CategoryBreakdown({ data }: Props) {
-  const [view, setView] = useState<'category' | 'cuisine'>('category')
-
+export function CategoryBreakdown({ data }: { data: any[] }) {
   const chartData = useMemo(() => {
-    const agg = new Map<string, number>()
+    const map = new Map<string, number>()
     data.forEach(d => {
-      const key = d[view]
-      agg.set(key, (agg.get(key) || 0) + d.predicted_orders)
+      map.set(d.category, (map.get(d.category) || 0) + d.predicted_orders)
     })
+    const arr = Array.from(map.entries())
+      .map(([name, orders]) => ({ name, orders }))
+      .sort((a,b) => b.orders - a.orders)
     
-    return Array.from(agg.entries())
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value)
-  }, [data, view])
+    const total = arr.reduce((s, d) => s + d.orders, 0)
+    return arr.map(d => ({ ...d, pct: total > 0 ? (d.orders / total) * 100 : 0 }))
+  }, [data])
 
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (!active || !payload?.length) return null
-    return (
-      <div className="bg-[var(--color-surface)] border border-[var(--color-hairline)] rounded-lg shadow-lg px-3 py-2 min-w-[120px]">
-        <p className="text-[11px] font-semibold text-[var(--color-ink-secondary)] uppercase tracking-wider mb-1">{payload[0].payload.name}</p>
-        <p className="text-[13px] font-semibold tabular-nums text-[var(--color-ink)]">
-          {Math.round(payload[0].value).toLocaleString('en-IN')} orders
-        </p>
-      </div>
-    )
-  }
-
-  if (!data.length) return null
+  if (!chartData.length) return null
 
   return (
-    <div className="border border-[var(--color-hairline)] rounded-lg bg-[var(--color-surface)] p-6 h-full flex flex-col" aria-label="Distribution breakdown">
-      <div className="flex items-center justify-between mb-6">
-        <h3 className="text-[15px] font-semibold tracking-tight">Demand distribution</h3>
-        <div className="flex items-center bg-[rgba(20,19,15,0.04)] p-0.5 rounded-md">
-          <button
-            onClick={() => setView('category')}
-            className={`px-3 py-1 text-[12px] font-medium rounded transition-colors ${view === 'category' ? 'bg-[var(--color-surface)] text-[var(--color-ink)] shadow-sm' : 'text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)]'}`}
-          >
-            Category
-          </button>
-          <button
-            onClick={() => setView('cuisine')}
-            className={`px-3 py-1 text-[12px] font-medium rounded transition-colors ${view === 'cuisine' ? 'bg-[var(--color-surface)] text-[var(--color-ink)] shadow-sm' : 'text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)]'}`}
-          >
-            Cuisine
-          </button>
-        </div>
-      </div>
-
-      <div className="flex-1 w-full -ml-4 min-h-[220px]">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 16, left: 24, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(20,19,15,0.06)" />
-            <XAxis type="number" axisLine={false} tickLine={false} tickFormatter={formatAxisTick} tick={{ fill: 'rgba(20,19,15,0.5)', fontSize: 11 }} />
-            <YAxis type="category" dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--color-ink)', fontSize: 11, fontWeight: 500 }} width={80} />
-            <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(20,19,15,0.02)' }} />
-            <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={32}>
-              {chartData.map((_, index) => (
-                <Cell key={`cell-${index}`} fill={index === 0 ? 'var(--color-brand)' : 'var(--color-normal)'} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+    <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-sm p-6" aria-label="Category Breakdown">
+      <h3 className="text-[15px] font-heading font-bold text-[var(--color-text)] tracking-tight mb-6">Category Distribution</h3>
+      
+      <div className="space-y-4">
+        {chartData.slice(0, 5).map(d => (
+          <div key={d.name} className="relative">
+            <div className="flex justify-between text-[13px] mb-1.5">
+              <span className="font-bold text-[var(--color-text)]">{d.name}</span>
+              <div className="flex items-center space-x-2">
+                <span className="tabular-nums font-bold text-[var(--color-text-secondary)]">{d.orders.toLocaleString('en-IN')}</span>
+                <span className="text-[11px] font-bold text-[var(--color-accent)] bg-[var(--color-accent-subtle)] px-1.5 rounded">{d.pct.toFixed(1)}%</span>
+              </div>
+            </div>
+            <div className="h-2 w-full bg-[var(--color-surface-alt)] rounded-full overflow-hidden">
+              <div className="h-full bg-[var(--color-accent)] rounded-full transition-all duration-500" style={{ width: `${d.pct}%` }} />
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   )

@@ -1,65 +1,54 @@
-import { useMemo } from 'react'
-import type { DetailedForecast } from '../../lib/types'
-import { formatCompact } from '../../lib/format'
-import { CalendarDays, Utensils, MapPin, Box } from 'lucide-react'
+﻿import { useMemo } from 'react'
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
+import { formatAxisTick } from '../../lib/format'
+import { Calendar } from 'lucide-react'
 
-interface Props {
-  week: number
-  data: DetailedForecast[]
-}
-
-export function WeekDetail({ week, data }: Props) {
-  const stats = useMemo(() => {
-    if (!data.length) return { total: 0, centers: 0, meals: 0, avg: 0 }
-    
-    let total = 0
-    const centers = new Set()
-    const meals = new Set()
-    
-    data.forEach(d => {
-      total += d.predicted_orders
-      centers.add(d.center_id)
-      meals.add(d.meal_id)
+export function WeekDetail({ week, data }: { week: number, data: any[] }) {
+  
+  const chartData = useMemo(() => {
+    const wData = data.filter(d => d.week === week)
+    const map = new Map<string, number>()
+    wData.forEach(d => {
+      map.set(d.simulated_city, (map.get(d.simulated_city) || 0) + d.predicted_orders)
     })
-    
-    return {
-      total,
-      centers: centers.size,
-      meals: meals.size,
-      avg: total / data.length
-    }
-  }, [data])
+    return Array.from(map.entries())
+      .map(([name, orders]) => ({ name, orders }))
+      .sort((a,b) => b.orders - a.orders)
+      .slice(0, 5)
+  }, [data, week])
 
-  if (!data.length) return null
+  if (!chartData.length) return null
 
   return (
-    <div className="border border-[var(--color-hairline)] rounded-lg bg-[var(--color-surface)] p-6 mb-8" aria-label="Week details">
+    <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-sm p-6" aria-label="City Volume">
       <div className="flex items-center space-x-2 mb-6">
-        <CalendarDays className="w-4 h-4 text-[var(--color-ink-secondary)]" />
-        <h3 className="text-[15px] font-semibold tracking-tight">Week {week} snapshot</h3>
+        <Calendar className="w-4 h-4 text-[var(--color-accent)]" />
+        <h3 className="text-[15px] font-heading font-bold text-[var(--color-text)] tracking-tight">Week {week} Top Cities</h3>
       </div>
       
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-        <Stat icon={Box} label="Total predicted" value={formatCompact(stats.total)} sub="orders" />
-        <Stat icon={MapPin} label="Active centers" value={stats.centers.toString()} sub="facilities" />
-        <Stat icon={Utensils} label="Menu items" value={stats.meals.toString()} sub="unique meals" />
-        <Stat icon={Box} label="Average volume" value={Math.round(stats.avg).toLocaleString('en-IN')} sub="predicted per meal" />
+      <div className="h-[200px] w-full -ml-4">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 10, left: 10, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--color-border-subtle)" />
+            <XAxis type="number" axisLine={false} tickLine={false} tickFormatter={formatAxisTick} tick={{ fill: 'var(--color-text-tertiary)', fontSize: 11, fontWeight: 500 }} />
+            <YAxis type="category" dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--color-text-secondary)', fontSize: 11, fontWeight: 600 }} width={80} />
+            <Tooltip 
+              cursor={{ fill: 'var(--color-surface-alt)' }}
+              content={({ active, payload }: any) => {
+                if (!active || !payload?.length) return null
+                return (
+                  <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-lg px-3 py-2">
+                    <div className="text-[12px] font-bold text-[var(--color-text)]">{payload[0].payload.name}</div>
+                    <div className="text-[13px] font-bold text-[var(--color-accent)] tabular-nums">{payload[0].value.toLocaleString('en-IN')} orders</div>
+                  </div>
+                )
+              }} 
+            />
+            <Bar dataKey="orders" fill="var(--color-accent)" radius={[0, 4, 4, 0]} barSize={24} />
+          </BarChart>
+        </ResponsiveContainer>
       </div>
     </div>
   )
 }
 
-function Stat({ icon: Icon, label, value, sub }: { icon: any, label: string, value: string, sub: string }) {
-  return (
-    <div>
-      <div className="flex items-center space-x-1.5 mb-1.5 text-[11px] font-medium text-[var(--color-ink-secondary)] uppercase tracking-wider">
-        <Icon className="w-3.5 h-3.5 opacity-70" />
-        <span>{label}</span>
-      </div>
-      <div className="flex items-baseline space-x-1.5">
-        <span className="text-2xl font-semibold tabular-nums tracking-tight text-[var(--color-ink)]">{value}</span>
-        <span className="text-[12px] text-[var(--color-ink-secondary)]">{sub}</span>
-      </div>
-    </div>
-  )
-}

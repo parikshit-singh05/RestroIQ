@@ -1,16 +1,16 @@
+import { Tag } from 'lucide-react'
+
 export function AnalyticsPromotions({ promo }: { promo: any }) {
   if (!promo.emailer) return null
   
   return (
-    <div className="border border-[var(--color-hairline)] rounded-lg bg-[var(--color-surface)] p-6 mb-8 flex-1" aria-label="Promotion Analysis">
-      <div className="mb-6">
-        <h3 className="text-[15px] font-semibold tracking-tight">Promotion Analysis</h3>
-        <p className="text-[13px] text-[var(--color-ink-secondary)] mt-0.5">
-          Comparison of average observed demand based on promotional conditions.
-        </p>
+    <div className="border border-[var(--color-border)] rounded-xl bg-[var(--color-surface)] p-6 shadow-sm" aria-label="Promotion Analysis">
+      <div className="flex items-center space-x-2 mb-6 pb-4 border-b border-[var(--color-border-subtle)]">
+        <Tag className="w-4 h-4 text-[var(--color-accent)]" />
+        <h3 className="text-[16px] font-heading font-bold tracking-tight text-[var(--color-text)]">Promotion Lift</h3>
       </div>
       
-      <div className="space-y-6">
+      <div className="space-y-8">
         <PromoComparison title="Emailer Promotion" data={promo.emailer} />
         <PromoComparison title="Homepage Featured" data={promo.homepage} />
       </div>
@@ -26,9 +26,9 @@ function PromoComparison({ title, data }: { title: string, data: any }) {
   
   return (
     <div>
-      <div className="flex justify-between items-baseline mb-3">
-        <h4 className="text-[12px] font-semibold text-[var(--color-ink-secondary)] uppercase tracking-wider">{title}</h4>
-        {diff > 0 && <span className="text-[11px] font-medium text-[var(--color-brand)] bg-[rgba(224,73,43,0.06)] px-1.5 py-0.5 rounded">+{diff.toFixed(1)}% diff</span>}
+      <div className="flex justify-between items-center mb-4">
+        <h4 className="text-[12px] font-bold text-[var(--color-text-secondary)] uppercase tracking-wider">{title}</h4>
+        {diff > 0 && <span className="text-[11px] font-bold text-[var(--color-success)] bg-[var(--color-success-bg)] border border-[var(--color-success)]/20 px-2 py-0.5 rounded-full">+{diff.toFixed(1)}% lift</span>}
       </div>
       
       <div className="space-y-3">
@@ -42,16 +42,16 @@ function PromoComparison({ title, data }: { title: string, data: any }) {
 function BarRow({ label, val, max, n, highlight }: any) {
   return (
     <div className="flex items-center text-[13px]">
-      <div className="w-[120px] text-[var(--color-ink-secondary)] truncate pr-2">{label}</div>
-      <div className="flex-1 flex items-center h-5">
+      <div className="w-[120px] font-medium text-[var(--color-text-secondary)] truncate pr-2">{label}</div>
+      <div className="flex-1 flex items-center h-6">
         <div 
-          className={`h-full rounded-r-sm transition-all duration-500 ${highlight ? 'bg-[var(--color-brand)]' : 'bg-[rgba(20,19,15,0.1)]'}`} 
+          className={`h-full rounded-r-md transition-all duration-500 ${highlight ? 'bg-[var(--color-accent)]' : 'bg-[var(--color-surface-alt)] border border-[var(--color-border)]'}`} 
           style={{ width: `${Math.max((val/max)*100, 2)}%` }}
         />
-        <span className={`ml-2 font-medium tabular-nums ${highlight ? 'text-[var(--color-brand)]' : 'text-[var(--color-ink)]'}`}>
+        <span className={`ml-3 font-bold tabular-nums ${highlight ? 'text-[var(--color-accent)]' : 'text-[var(--color-text)]'}`}>
           {Math.round(val).toLocaleString('en-IN')}
         </span>
-        <span className="ml-2 text-[10px] text-[var(--color-ink-secondary)] tabular-nums">(n={n.toLocaleString('en-IN')})</span>
+        <span className="ml-2 text-[10px] font-bold text-[var(--color-text-tertiary)] uppercase tabular-nums">n={n.toLocaleString('en-IN')}</span>
       </div>
     </div>
   )

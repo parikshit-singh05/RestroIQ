@@ -1,37 +1,107 @@
-﻿@import "tailwindcss";
+@import "tailwindcss";
 
 @theme {
-  --color-canvas: #F6F4EF;
-  --color-surface: #FFFFFF;
-  --color-ink: #14130F;
-  --color-ink-secondary: rgba(20, 19, 15, 0.6);
-  --color-hairline: rgba(20, 19, 15, 0.1);
-  --color-brand: #8B261D;
-  
-  /* Semantic Data Colors */
-  --color-peak: #D94833;
-  --color-peak-bg: #FCEAE8;
-  --color-growth: #2F7C47;
-  --color-growth-bg: #E3F5E9;
-  --color-normal: #64748B;
-  --color-normal-bg: #F1F5F9;
-  --color-caution: #D4890E;
-  --color-caution-bg: #FEF3C7;
-  --color-risk: #B91C1C;
-  --color-risk-bg: #FEE2E2;
+  --color-bg: var(--color-bg);
+  --color-surface: var(--color-surface);
+  --color-surface-alt: var(--color-surface-alt);
+  --color-border: var(--color-border);
+  --color-border-subtle: var(--color-border-subtle);
+  --color-text: var(--color-text);
+  --color-text-secondary: var(--color-text-secondary);
+  --color-text-tertiary: var(--color-text-tertiary);
+  --color-accent: var(--color-accent);
+  --color-accent-hover: var(--color-accent-hover);
+  --color-accent-subtle: var(--color-accent-subtle);
+  --color-success: var(--color-success);
+  --color-success-bg: var(--color-success-bg);
+  --color-warning: var(--color-warning);
+  --color-warning-bg: var(--color-warning-bg);
+  --color-danger: var(--color-danger);
+  --color-danger-bg: var(--color-danger-bg);
 
-  --font-sans: 'Inter Tight', 'Geist', sans-serif;
-  --font-serif: 'Instrument Serif', serif;
+  --color-chart-1: var(--color-chart-1);
+  --color-chart-2: var(--color-chart-2);
+  --color-chart-3: var(--color-chart-3);
+  --color-chart-4: var(--color-chart-4);
+  --color-chart-5: var(--color-chart-5);
+  --color-chart-6: var(--color-chart-6);
+  --color-chart-hist: var(--color-chart-hist);
+
+  --font-sans: 'Inter', sans-serif;
+  --font-heading: 'Manrope', sans-serif;
+}
+
+:root {
+  /* Light Theme */
+  --color-bg: #F8FAFC;
+  --color-surface: #FFFFFF;
+  --color-surface-alt: #F1F5F9;
+  --color-border: #E2E8F0;
+  --color-border-subtle: #F8FAFC;
+  --color-text: #0F172A;
+  --color-text-secondary: #475569;
+  --color-text-tertiary: #94A3B8;
+  
+  --color-accent: #6366F1;
+  --color-accent-hover: #4F46E5;
+  --color-accent-subtle: #EEF2FF;
+  
+  --color-success: #10B981;
+  --color-success-bg: #ECFDF5;
+  --color-warning: #F59E0B;
+  --color-warning-bg: #FFFBEB;
+  --color-danger: #EF4444;
+  --color-danger-bg: #FEF2F2;
+
+  --color-chart-1: #6366F1;
+  --color-chart-2: #10B981;
+  --color-chart-3: #F59E0B;
+  --color-chart-4: #EC4899;
+  --color-chart-5: #06B6D4;
+  --color-chart-6: #8B5CF6;
+  --color-chart-hist: #94A3B8;
+}
+
+.dark {
+  /* Dark Theme */
+  --color-bg: #0B0F19;
+  --color-surface: #131A2A; 
+  --color-surface-alt: #1E293B;
+  --color-border: #334155;
+  --color-border-subtle: #1E293B;
+  --color-text: #F8FAFC;
+  --color-text-secondary: #94A3B8;
+  --color-text-tertiary: #475569;
+  
+  --color-accent: #818CF8;
+  --color-accent-hover: #A5B4FC;
+  --color-accent-subtle: rgba(99, 102, 241, 0.15); 
+  
+  --color-success: #34D399;
+  --color-success-bg: rgba(16, 185, 129, 0.15); 
+  --color-warning: #FBBF24;
+  --color-warning-bg: rgba(245, 158, 11, 0.15); 
+  --color-danger: #F87171;
+  --color-danger-bg: rgba(239, 68, 68, 0.15); 
+
+  --color-chart-1: #818CF8;
+  --color-chart-2: #34D399;
+  --color-chart-3: #FBBF24;
+  --color-chart-4: #F472B6;
+  --color-chart-5: #22D3EE;
+  --color-chart-6: #A78BFA;
+  --color-chart-hist: #475569;
 }
 
 body {
-    background-color: var(--color-canvas);
-    color: var(--color-ink);
-    font-family: var(--font-sans);
-    -webkit-font-smoothing: antialiased;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Refined custom scrollbars */
+/* Scrollbars */
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -40,9 +110,9 @@ body {
   background: transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: var(--color-hairline);
+  background: var(--color-border);
   border-radius: 10px;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(20, 19, 15, 0.2);
+  background: var(--color-text-tertiary);
 }

@@ -1,97 +1,98 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { getCentersAnalysis } from '../lib/api'
-import { useAppContext } from '../context/AppContext'
-import { AlertCircle, RefreshCw } from 'lucide-react'
+import { getCenters } from '../lib/api'
 import { CentersSummary } from '../components/centers/CentersSummary'
-import { CentersDirectory } from '../components/centers/CentersDirectory'
 import { CentersDistribution } from '../components/centers/CentersDistribution'
-
-export interface CentersFilterState {
-  city: string;
-  type: string;
-  search: string;
-}
+import { CentersDirectory } from '../components/centers/CentersDirectory'
+import { AlertCircle, RefreshCw, Search, X } from 'lucide-react'
 
 export function Centers() {
-  const { buffer } = useAppContext()
-  const bufferPct = buffer / 100
-  const [filters, setFilters] = useState<CentersFilterState>({ city: '', type: '', search: '' })
-
-  const { data: centers = [], isLoading, isError, refetch } = useQuery({
-    queryKey: ['centers_analysis'],
-    queryFn: getCentersAnalysis
+  const [search, setSearch] = useState('')
+  const { data, isLoading, isError, refetch } = useQuery({ 
+    queryKey: ['centers'], 
+    queryFn: getCenters, 
+    staleTime: 5 * 60 * 1000 
   })
 
-  const filteredCenters = useMemo(() => {
-    return centers.filter(c => {
-      if (filters.city && c.simulated_city !== filters.city) return false;
-      if (filters.type && c.center_type !== filters.type) return false;
-      if (filters.search) {
-        const s = filters.search.toLowerCase()
-        if (!c.center_id.toString().includes(s) && !c.simulated_city.toLowerCase().includes(s)) return false;
-      }
-      return true;
-    })
-  }, [centers, filters])
-
-  const totalFilteredDemand = useMemo(() => filteredCenters.reduce((sum, c) => sum + c.predicted_orders, 0), [filteredCenters])
-
-  const topCenter = useMemo(() => {
-    if (!filteredCenters.length) return null
-    return [...filteredCenters].sort((a, b) => b.predicted_orders - a.predicted_orders)[0]
-  }, [filteredCenters])
-
-  const insight = topCenter 
-    ? `Center ${topCenter.center_id} represents the largest share of forecast demand (${((topCenter.predicted_orders / totalFilteredDemand) * 100).toFixed(1)}% of filtered view) across the planning horizon.`
-    : `Compare demand forecasts and preparation requirements across the center network.`
+  const filteredData = useMemo(() => {
+    if (!data) return []
+    if (!search) return data
+    const s = search.toLowerCase()
+    return data.filter((c:any) => 
+      c.simulated_city.toLowerCase().includes(s) || 
+      c.center_type.toLowerCase().includes(s) || 
+      `center ${c.center_id}`.includes(s) ||
+      c.center_id.toString().includes(s)
+    )
+  }, [data, search])
 
   if (isLoading) {
     return (
-      <div className="max-w-[1120px] mx-auto pb-16 pt-8 animate-pulse">
-        <div className="h-10 bg-black/5 w-1/4 mb-4 rounded"></div>
-        <div className="h-4 bg-black/5 w-2/3 mb-12 rounded"></div>
-        <div className="h-24 bg-black/5 w-full mb-8 rounded"></div>
-        <div className="h-64 bg-black/5 w-full rounded"></div>
+      <div className="w-full animate-pulse">
+        <div className="pt-6 lg:pt-8 mb-8 h-20 bg-[var(--color-border)] rounded-lg max-w-[800px]" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          {[1,2,3].map(i => <div key={i} className="h-28 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl" />)}
+        </div>
+        <div className="h-[300px] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl mb-8" />
+        <div className="h-[400px] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl" />
       </div>
     )
   }
 
-  if (isError) {
+  if (isError || !data) {
     return (
-      <div className="max-w-[1120px] mx-auto flex flex-col items-center justify-center py-24">
-        <AlertCircle className="w-10 h-10 text-[var(--color-risk)] mb-4" />
-        <h2 className="text-lg font-semibold mb-2">Unable to load center analysis</h2>
-        <button onClick={() => refetch()} className="flex items-center space-x-2 px-4 py-2 rounded-md bg-[var(--color-brand)] text-white text-[13px] font-medium mt-4">
-          <RefreshCw className="w-3.5 h-3.5" />
-          <span>Retry</span>
+      <div className="flex flex-col items-center justify-center py-24 w-full h-full">
+        <div className="w-16 h-16 rounded-full bg-[var(--color-danger-bg)] flex items-center justify-center mb-4">
+          <AlertCircle className="w-8 h-8 text-[var(--color-danger)]" />
+        </div>
+        <h2 className="text-lg font-heading font-bold text-[var(--color-text)] mb-2">Unable to load centers</h2>
+        <button
+          onClick={() => refetch()}
+          className="flex items-center space-x-2 px-5 py-2.5 rounded-lg bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white text-[14px] font-semibold transition-colors shadow-sm mt-4"
+        >
+          <RefreshCw className="w-4 h-4" />
+          <span>Retry Connection</span>
         </button>
       </div>
     )
   }
 
   return (
-    <div className="max-w-[1120px] mx-auto pb-16">
-      <header className="pt-8 mb-10 max-w-[760px]">
-        <h1 className="font-serif text-[28px] leading-[1.25] tracking-tight text-[var(--color-ink)] mb-2">
-          Centers
+    <div className="w-full pb-16 animate-in fade-in duration-500">
+      <header className="pt-6 lg:pt-8 mb-8 max-w-[800px]">
+        <h1 className="font-heading font-extrabold text-[28px] lg:text-[32px] leading-[1.2] tracking-tight text-[var(--color-text)] mb-2">
+          Fulfillment Centers
         </h1>
-        <p className="text-[15px] text-[var(--color-ink-secondary)] leading-relaxed">
-          {insight}
+        <p className="text-[15px] font-medium text-[var(--color-text-secondary)]">
+          Explore the operational footprint, region distribution, and specific center configurations.
         </p>
       </header>
 
-      <CentersSummary centers={filteredCenters} bufferPct={bufferPct} />
-      
-      <CentersDistribution centers={filteredCenters} bufferPct={bufferPct} />
+      <div className="mb-6 relative max-w-md">
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <Search className="h-4 w-4 text-[var(--color-text-tertiary)]" />
+        </div>
+        <input
+          type="text"
+          className="block w-full pl-10 pr-10 py-3 border border-[var(--color-border)] rounded-xl text-[13px] font-medium bg-[var(--color-surface)] shadow-sm text-[var(--color-text)] placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] transition-all"
+          placeholder="Search by ID, City, or Type..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        {search && (
+          <button onClick={() => setSearch('')} className="absolute inset-y-0 right-0 pr-3 flex items-center text-[var(--color-text-tertiary)] hover:text-[var(--color-text)]">
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
 
-      <CentersDirectory 
-        centers={filteredCenters} 
-        allCenters={centers}
-        filters={filters}
-        setFilters={setFilters}
-        bufferPct={bufferPct}
-      />
+      <CentersSummary data={filteredData} totalCenters={data.length} />
+      
+      <div className="mb-8">
+        <CentersDistribution data={filteredData} />
+      </div>
+
+      <CentersDirectory data={filteredData} />
     </div>
   )
 }

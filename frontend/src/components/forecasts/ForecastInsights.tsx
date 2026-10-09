@@ -1,66 +1,55 @@
-import type { DetailedForecast } from '../../lib/types'
-import { formatCompact } from '../../lib/format'
-import { Activity } from 'lucide-react'
-import { useMemo } from 'react'
+﻿import { formatCompact } from '../../lib/format'
+import { TrendingUp, AlertTriangle } from 'lucide-react'
 
-interface Props {
-  data: DetailedForecast[]
-  week: number
-}
+export function ForecastInsights({ data }: { data: any[] }) {
+  if (!data.length) return null
 
-export function ForecastInsights({ data, week }: Props) {
-  const insights = useMemo(() => {
-    if (!data.length) return []
-    
-    // Total
-    const total = data.reduce((sum, d) => sum + d.predicted_orders, 0)
-    
-    // Top center
-    const centers = new Map<string, number>()
-    let topCenter = { name: '', vol: 0 }
-    
-    // Top category
-    const categories = new Map<string, number>()
-    let topCat = { name: '', vol: 0 }
-
-    data.forEach(d => {
-      const cName = `Center ${d.center_id} (${d.simulated_city})`
-      const cVol = (centers.get(cName) || 0) + d.predicted_orders
-      centers.set(cName, cVol)
-      if (cVol > topCenter.vol) topCenter = { name: cName, vol: cVol }
-
-      const catVol = (categories.get(d.category) || 0) + d.predicted_orders
-      categories.set(d.category, catVol)
-      if (catVol > topCat.vol) topCat = { name: d.category, vol: catVol }
-    })
-
-    const obs = []
-    obs.push(`Currently viewing ${formatCompact(total)} predicted orders for Week ${week}.`)
-    if (topCat.name) {
-      obs.push(`The ${topCat.name} category drives the largest segment of this filtered view at ${formatCompact(topCat.vol)} orders.`)
-    }
-    if (topCenter.name) {
-      obs.push(`${topCenter.name} holds the highest concentration of volume in this segment.`)
-    }
-    
-    return obs
-  }, [data, week])
-
-  if (!insights.length) return null
+  const totalDemand = data.reduce((sum, d) => sum + d.predicted_orders, 0)
+  
+  // Calculate category concentration
+  const catMap = new Map<string, number>()
+  data.forEach(d => {
+    catMap.set(d.category, (catMap.get(d.category) || 0) + d.predicted_orders)
+  })
+  let topCat = { name: '', val: 0 }
+  catMap.forEach((val, key) => {
+    if (val > topCat.val) topCat = { name: key, val }
+  })
+  const topCatShare = totalDemand > 0 ? (topCat.val / totalDemand) * 100 : 0
 
   return (
-    <div className="border border-[var(--color-hairline)] rounded-lg bg-[var(--color-surface)] p-6 h-full">
-      <div className="flex items-center space-x-2 mb-4">
-        <Activity className="w-4 h-4 text-[var(--color-ink-secondary)]" />
-        <h3 className="text-[15px] font-semibold tracking-tight">Contextual read</h3>
+    <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-sm p-5 h-full">
+      <div className="flex items-center space-x-2 mb-6 pb-3 border-b border-[var(--color-border)]/50">
+        <TrendingUp className="w-4 h-4 text-[var(--color-accent)]" />
+        <h3 className="text-[14px] font-bold text-[var(--color-text)] uppercase tracking-wider">Filtered Insights</h3>
       </div>
-      <div className="space-y-3">
-        {insights.map((obs, i) => (
-          <div key={i} className="flex items-start space-x-3 text-[13px] text-[var(--color-ink-secondary)] leading-relaxed">
-            <span className="w-1 h-1 rounded-full bg-[var(--color-ink-secondary)] mt-[7px] flex-shrink-0 opacity-50" />
-            <span>{obs}</span>
+
+      <div className="space-y-6">
+        <div>
+          <p className="text-[11px] font-bold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-1.5">Total Volume</p>
+          <p className="text-[28px] font-heading font-bold text-[var(--color-text)] tabular-nums leading-none">
+            {formatCompact(totalDemand)}
+          </p>
+          <p className="text-[12px] font-medium text-[var(--color-text-secondary)] mt-1.5">Predicted orders in current view</p>
+        </div>
+
+        <div>
+          <p className="text-[11px] font-bold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-1.5">Top Category</p>
+          <div className="flex items-baseline space-x-2">
+            <p className="text-[20px] font-heading font-bold text-[var(--color-text)] leading-none">{topCat.name || 'N/A'}</p>
+            <span className="text-[13px] font-bold text-[var(--color-accent)]">{topCatShare.toFixed(1)}%</span>
           </div>
-        ))}
+          <p className="text-[12px] font-medium text-[var(--color-text-secondary)] mt-1.5">Share of filtered demand</p>
+        </div>
+
+        <div className="bg-[var(--color-warning-bg)] border border-[var(--color-warning)]/20 p-4 rounded-lg mt-6">
+          <div className="flex items-start space-x-2.5">
+            <AlertTriangle className="w-4 h-4 text-[var(--color-warning)] mt-0.5 flex-shrink-0" />
+            <p className="text-[12px] font-medium text-[var(--color-warning)] leading-relaxed">
+              These insights react instantly to your applied filters. Use them to drill down into specific geographic or menu segments.
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   )

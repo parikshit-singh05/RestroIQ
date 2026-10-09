@@ -1,216 +1,138 @@
 import { useMemo } from 'react'
-import {
-  ResponsiveContainer,
-  ComposedChart,
-  Line,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ReferenceLine,
-} from 'recharts'
-import type { ForecastSummary, HistorySummary } from '../../lib/types'
-import { computePeakWeek } from '../../lib/computations'
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine } from 'recharts'
+import type { ForecastSummary } from '../../lib/types'
 import { formatAxisTick } from '../../lib/format'
+import { computePeakWeek } from '../../lib/computations'
+import { useAppContext } from '../../context/AppContext'
+import { BarChart2 } from 'lucide-react'
 
 interface Props {
-  history: HistorySummary[]
-  forecast: ForecastSummary[]
+  summary: ForecastSummary[]
 }
 
-export function ForecastChart({ history, forecast }: Props) {
-  const peak = computePeakWeek(forecast)
-  // // const wow = computeLargestWoWChange(forecast)
+export function ForecastChart({ summary }: Props) {
+  const { buffer } = useAppContext()
+  const peak = computePeakWeek(summary)
 
-  const chartData = useMemo(() => {
-    const histPoints = history.map(h => ({
-      week: h.week,
-      actual: h.total_orders,
-      forecast: null as number | null,
-      type: 'actual' as const,
+  const data = useMemo(() => {
+    return summary.map(s => ({
+      week: s.week,
+      orders: s.total_predicted_orders,
+      prep: s.total_predicted_orders * (1 + buffer / 100)
     }))
+  }, [summary, buffer])
 
-    // Bridge: last actual connects to first forecast
-    const bridge = history.length > 0 && forecast.length > 0
-      ? [{
-          week: history[history.length - 1].week,
-          actual: null as number | null,
-          forecast: history[history.length - 1].total_orders,
-          type: 'bridge' as const,
-        }]
-      : []
-
-    const forecastPoints = forecast.map(f => ({
-      week: f.week,
-      actual: null as number | null,
-      forecast: f.total_predicted_orders,
-      type: 'forecast' as const,
-    }))
-
-    return [...histPoints, ...bridge, ...forecastPoints]
-  }, [history, forecast])
+  if (!data.length) return null
 
   const CustomTooltip = ({ active, payload }: any) => {
     if (!active || !payload?.length) return null
-    const d = payload[0].payload
-    const val = d.actual ?? d.forecast
-    if (val == null) return null
-
-    const isActual = d.type === 'actual'
-
-    // Find prev week for delta
-    const idx = chartData.findIndex(p => p.week === d.week)
-    let delta: string | null = null
-    if (idx > 0) {
-      const prevVal = chartData[idx - 1].actual ?? chartData[idx - 1].forecast
-      if (prevVal && prevVal > 0) {
-        const pct = ((val - prevVal) / prevVal * 100).toFixed(1)
-        delta = `${Number(pct) >= 0 ? '+' : ''}${pct}% vs prev week`
-      }
-    }
-
     return (
-      <div className="bg-[var(--color-surface)] border border-[var(--color-hairline)] rounded-lg shadow-lg px-4 py-3 min-w-[180px]">
-        <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[11px] font-semibold text-[var(--color-ink-secondary)] uppercase tracking-wider">
-            Week {d.week}
-          </span>
-          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${isActual ? 'bg-[var(--color-normal-bg)] text-[var(--color-normal)]' : 'bg-[var(--color-peak-bg)] text-[var(--color-brand)]'}`}>
-            {isActual ? 'Actual' : 'Forecast'}
-          </span>
+      <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-lg px-4 py-3 min-w-[180px]">
+        <div className="text-[11px] font-bold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2 pb-2 border-b border-[var(--color-border-subtle)]">
+          Week {payload[0].payload.week}
         </div>
-        <p className="text-xl font-semibold tabular-nums tracking-tight">
-          {Math.round(val).toLocaleString('en-IN')}
-          <span className="text-[13px] font-normal text-[var(--color-ink-secondary)] ml-1">orders</span>
-        </p>
-        {delta && (
-          <p className="text-[12px] text-[var(--color-ink-secondary)] mt-1 pt-1.5 border-t border-[var(--color-hairline)]">
-            {delta}
-          </p>
-        )}
+        <div className="flex flex-col space-y-2">
+          {payload.map((p: any) => (
+            <div key={p.dataKey} className="flex justify-between items-center text-[13px]">
+              <div className="flex items-center">
+                <span className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: p.color }} />
+                <span className="text-[var(--color-text-secondary)] font-medium">
+                  {p.dataKey === 'orders' ? 'Predicted Demand' : 'Prep Target'}
+                </span>
+              </div>
+              <span className="font-bold tabular-nums ml-4 text-[var(--color-text)]">{p.value.toLocaleString('en-IN')}</span>
+            </div>
+          ))}
+        </div>
       </div>
     )
   }
 
   return (
-    <section className="mb-8" aria-label="Demand forecast chart">
-      <div className="border border-[var(--color-hairline)] rounded-lg bg-[var(--color-surface)] p-6 pb-4">
-        <div className="flex items-start justify-between mb-5">
-          <div>
-            <h2 className="text-[15px] font-semibold tracking-tight mb-0.5">Demand trajectory: history into forecast</h2>
-            <p className="text-[13px] text-[var(--color-ink-secondary)]">
-              Weeks 136-145 actual, Weeks 146-155 predicted. Peak at Week {peak.week}.
-            </p>
+    <div className="border border-[var(--color-border)] rounded-xl bg-[var(--color-surface)] p-6 shadow-sm h-full flex flex-col" aria-label="Forecast Trajectory Chart">
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <div className="flex items-center space-x-2 mb-1.5">
+            <BarChart2 className="w-4 h-4 text-[var(--color-accent)]" />
+            <h3 className="text-[16px] font-heading font-bold tracking-tight text-[var(--color-text)]">Forecast Trajectory</h3>
           </div>
-          <div className="flex items-center space-x-5 text-[12px]">
-            <div className="flex items-center space-x-1.5">
-              <div className="w-5 h-[2px] bg-[var(--color-normal)] rounded" />
-              <span className="text-[var(--color-ink-secondary)]">Actual</span>
-            </div>
-            <div className="flex items-center space-x-1.5">
-              <div className="w-5 h-[2px] bg-[var(--color-brand)] rounded" />
-              <span className="text-[var(--color-ink-secondary)]">Forecast</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="h-[260px] w-full -ml-2">
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={chartData} margin={{ top: 16, right: 12, left: 0, bottom: 4 }}>
-              <CartesianGrid
-                strokeDasharray="3 3"
-                vertical={false}
-                stroke="rgba(20,19,15,0.06)"
-              />
-              <XAxis
-                dataKey="week"
-                axisLine={false}
-                tickLine={false}
-                tick={{ fill: 'rgba(20,19,15,0.5)', fontSize: 11, fontWeight: 500 }}
-                dy={8}
-                interval={1}
-              />
-              <YAxis
-                axisLine={false}
-                tickLine={false}
-                tick={{ fill: 'rgba(20,19,15,0.5)', fontSize: 11 }}
-                tickFormatter={formatAxisTick}
-                width={48}
-              />
-              <Tooltip
-                content={<CustomTooltip />}
-                cursor={{ stroke: 'rgba(20,19,15,0.15)', strokeWidth: 1, strokeDasharray: '4 4' }}
-              />
-
-              {/* Forecast start marker */}
-              <ReferenceLine
-                x={145.5}
-                stroke="var(--color-brand)"
-                strokeDasharray="4 4"
-                strokeOpacity={0.4}
-                label={{
-                  value: 'Forecast start',
-                  position: 'insideTopRight',
-                  fill: 'var(--color-brand)',
-                  fontSize: 10,
-                  fontWeight: 600,
-                  dy: -4,
-                }}
-              />
-
-              {/* Actual demand area */}
-              <Area
-                type="monotone"
-                dataKey="actual"
-                fill="rgba(100,116,139,0.08)"
-                stroke="var(--color-normal)"
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 4, fill: 'var(--color-normal)', stroke: 'var(--color-surface)', strokeWidth: 2 }}
-                connectNulls={false}
-              />
-
-              {/* Forecast line */}
-              <Line
-                type="monotone"
-                dataKey="forecast"
-                stroke="var(--color-brand)"
-                strokeWidth={2.5}
-                dot={(props: any) => {
-                  const { cx, cy, payload } = props
-                  if (!cx || !cy || payload.type === 'bridge') return <svg key={payload.week} />
-                  const isPeak = payload.week === peak.week
-                  return (
-                    <g key={payload.week}>
-                      <circle
-                        cx={cx} cy={cy}
-                        r={isPeak ? 6 : 3.5}
-                        fill={isPeak ? 'var(--color-peak)' : 'var(--color-surface)'}
-                        stroke={isPeak ? 'var(--color-peak)' : 'var(--color-brand)'}
-                        strokeWidth={isPeak ? 2.5 : 2}
-                      />
-                      {isPeak && (
-                        <text
-                          x={cx} y={cy - 14}
-                          textAnchor="middle"
-                          fill="var(--color-peak)"
-                          fontSize={10}
-                          fontWeight={700}
-                        >
-                          Peak
-                        </text>
-                      )}
-                    </g>
-                  )
-                }}
-                activeDot={{ r: 5, fill: 'var(--color-brand)', stroke: 'var(--color-surface)', strokeWidth: 2 }}
-                connectNulls={false}
-              />
-            </ComposedChart>
-          </ResponsiveContainer>
+          <p className="text-[13px] text-[var(--color-text-secondary)] font-medium">Predicted volume vs planned preparation.</p>
         </div>
       </div>
-    </section>
+      
+      <div className="flex-grow min-h-[300px] w-full -ml-4">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={data} margin={{ top: 20, right: 10, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id="colorOrders" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.3}/>
+                <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0}/>
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border-subtle)" />
+            <XAxis 
+              dataKey="week" 
+              axisLine={false} 
+              tickLine={false} 
+              tick={{ fill: 'var(--color-text-tertiary)', fontSize: 12, fontWeight: 500 }} 
+              dy={10} 
+            />
+            <YAxis 
+              axisLine={false} 
+              tickLine={false} 
+              tick={{ fill: 'var(--color-text-tertiary)', fontSize: 12, fontWeight: 500 }} 
+              tickFormatter={formatAxisTick} 
+              width={50} 
+            />
+            <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'var(--color-border)', strokeWidth: 1, strokeDasharray: '4 4' }} />
+            
+            <Area 
+              type="monotone" 
+              dataKey="orders" 
+              stroke="var(--color-accent)" 
+              strokeWidth={3} 
+              fillOpacity={1} 
+              fill="url(#colorOrders)" 
+              activeDot={{ r: 5, fill: 'var(--color-accent)', strokeWidth: 0 }} 
+            />
+            
+            {buffer > 0 && (
+              <Area 
+                type="monotone" 
+                dataKey="prep" 
+                stroke="var(--color-success)" 
+                strokeWidth={2} 
+                fill="none" 
+                strokeDasharray="4 4" 
+                activeDot={{ r: 4, fill: 'var(--color-success)', strokeWidth: 0 }}
+              />
+            )}
+            
+            {peak.week > 0 && (
+              <ReferenceLine 
+                x={peak.week} 
+                stroke="var(--color-danger)" 
+                strokeDasharray="3 3" 
+                strokeOpacity={0.5}
+                label={{ position: 'top', value: 'PEAK', fill: 'var(--color-danger)', fontSize: 10, fontWeight: 800 }} 
+              />
+            )}
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+      
+      <div className="flex items-center justify-center space-x-6 mt-6 pt-4 border-t border-[var(--color-border-subtle)]">
+        <div className="flex items-center space-x-2">
+          <div className="w-3 h-3 rounded bg-[var(--color-accent)] opacity-80 shadow-sm"></div>
+          <span className="text-[12px] font-bold text-[var(--color-text-secondary)] uppercase tracking-wider">Predicted Demand</span>
+        </div>
+        {buffer > 0 && (
+          <div className="flex items-center space-x-2">
+            <div className="w-4 h-0.5 bg-[var(--color-success)]"></div>
+            <span className="text-[12px] font-bold text-[var(--color-text-secondary)] uppercase tracking-wider">Prep Target</span>
+          </div>
+        )}
+      </div>
+    </div>
   )
 }

@@ -1,39 +1,38 @@
-import type { CenterAnalysis } from '../../lib/types'
-import { formatCompact, formatFull } from '../../lib/format'
+export function CentersSummary({ data, totalCenters }: { data: any[], totalCenters: number }) {
+  if (!data.length) return null
 
-export function CentersSummary({ centers, bufferPct }: { centers: CenterAnalysis[], bufferPct: number }) {
-  const count = centers.length
-  const totalPredicted = centers.reduce((sum, c) => sum + c.predicted_orders, 0)
-  const totalPrep = totalPredicted * (1 + bufferPct)
-
-  const topCenter = count > 0 ? [...centers].sort((a, b) => b.predicted_orders - a.predicted_orders)[0] : null
+  const distinctCities = new Set(data.map(d => d.simulated_city)).size
+  
+  const typeMap = new Map<string, number>()
+  data.forEach(d => {
+    typeMap.set(d.center_type, (typeMap.get(d.center_type) || 0) + 1)
+  })
+  
+  let topType = { name: '', count: 0 }
+  typeMap.forEach((v, k) => {
+    if (v > topType.count) topType = { name: k, count: v }
+  })
 
   return (
-    <div className="flex flex-col md:flex-row md:items-center justify-between border-y border-[var(--color-hairline)] py-5 mb-12">
-      <div className="flex-1 min-w-0 pr-6 border-b md:border-b-0 md:border-r border-[var(--color-hairline)] mb-4 md:mb-0 pb-4 md:pb-0">
-        <p className="text-[12px] font-medium text-[var(--color-ink-secondary)] mb-1 uppercase tracking-wider">Centers in View</p>
-        <p className="text-[24px] font-serif tracking-tight text-[var(--color-ink)]">{count}</p>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+      <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-5 shadow-sm">
+        <p className="text-[11px] font-bold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">Total Locations</p>
+        <div className="flex items-baseline space-x-2">
+          <p className="text-[32px] font-heading font-bold tabular-nums text-[var(--color-text)] leading-none">{data.length}</p>
+          {data.length !== totalCenters && (
+            <span className="text-[13px] font-bold text-[var(--color-text-tertiary)]">of {totalCenters}</span>
+          )}
+        </div>
       </div>
-
-      <div className="flex-1 min-w-0 px-0 md:px-6 border-b md:border-b-0 md:border-r border-[var(--color-hairline)] mb-4 md:mb-0 pb-4 md:pb-0">
-        <p className="text-[12px] font-medium text-[var(--color-ink-secondary)] mb-1 uppercase tracking-wider">Predicted Orders</p>
-        <p className="text-[24px] font-serif tracking-tight text-[var(--color-ink)]" title={formatFull(totalPredicted)}>
-          {formatCompact(totalPredicted)}
-        </p>
+      <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-5 shadow-sm">
+        <p className="text-[11px] font-bold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">Simulated Cities</p>
+        <p className="text-[32px] font-heading font-bold tabular-nums text-[var(--color-text)] leading-none">{distinctCities}</p>
       </div>
-
-      <div className="flex-1 min-w-0 px-0 md:px-6 border-b md:border-b-0 md:border-r border-[var(--color-hairline)] mb-4 md:mb-0 pb-4 md:pb-0">
-        <p className="text-[12px] font-medium text-[var(--color-ink-secondary)] mb-1 uppercase tracking-wider">Top Forecast Center</p>
-        <p className="text-[24px] font-serif tracking-tight text-[var(--color-ink)] truncate">
-          {topCenter ? `Center ${topCenter.center_id}` : '--'}
-        </p>
-      </div>
-
-      <div className="flex-1 min-w-0 md:pl-6">
-        <p className="text-[12px] font-medium text-[var(--color-ink-secondary)] mb-1 uppercase tracking-wider">Recommended Prep</p>
-        <p className="text-[24px] font-serif tracking-tight text-[var(--color-ink)]" title={formatFull(totalPrep)}>
-          {formatCompact(totalPrep)}
-        </p>
+      <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-5 shadow-sm">
+        <p className="text-[11px] font-bold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">Primary Typology</p>
+        <div className="flex items-baseline space-x-2">
+          <p className="text-[32px] font-heading font-bold text-[var(--color-text)] leading-none">{topType.name}</p>
+        </div>
       </div>
     </div>
   )

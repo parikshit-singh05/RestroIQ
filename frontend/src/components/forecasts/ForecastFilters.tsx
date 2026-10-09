@@ -1,6 +1,7 @@
-import { Search } from 'lucide-react'
+import { Search, X } from 'lucide-react'
 
 export interface FilterState {
+  week: string
   city: string
   centerId: string
   category: string
@@ -10,74 +11,91 @@ export interface FilterState {
 
 interface Props {
   filters: FilterState
-  setFilters: (f: FilterState | ((prev: FilterState) => FilterState)) => void
+  setFilters: React.Dispatch<React.SetStateAction<FilterState>>
+  distinctWeeks: string[]
   distinctCities: string[]
   distinctCenters: string[]
   distinctCategories: string[]
   distinctCuisines: string[]
 }
 
-export function ForecastFilters({ filters, setFilters, distinctCities, distinctCenters, distinctCategories, distinctCuisines }: Props) {
+export function ForecastFilters({ filters, setFilters, distinctWeeks, distinctCities, distinctCenters, distinctCategories, distinctCuisines }: Props) {
+  
+  const hasActiveFilters = Object.values(filters).some(v => v !== '')
+  const clearFilters = () => setFilters({ week: '', city: '', centerId: '', category: '', cuisine: '', search: '' })
+
   return (
-    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 py-4 px-10 -mx-10 border-y border-[var(--color-hairline)] mb-8 sticky top-0 z-20 backdrop-blur-md bg-[var(--color-surface)]/95 shadow-sm">
-      <div className="flex flex-wrap items-center gap-3">
-        <FilterSelect
-          label="City"
-          value={filters.city}
-          options={distinctCities}
-          onChange={(v) => setFilters(f => ({ ...f, city: v, centerId: '' }))}
-        />
-        <FilterSelect
-          label="Center"
-          value={filters.centerId}
-          options={distinctCenters}
-          onChange={(v) => setFilters(f => ({ ...f, centerId: v }))}
-        />
-        <FilterSelect
-          label="Category"
-          value={filters.category}
-          options={distinctCategories}
-          onChange={(v) => setFilters(f => ({ ...f, category: v }))}
-        />
-        <FilterSelect
-          label="Cuisine"
-          value={filters.cuisine}
-          options={distinctCuisines}
-          onChange={(v) => setFilters(f => ({ ...f, cuisine: v }))}
-        />
+    <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-4 lg:p-5 shadow-sm space-y-4">
+      <div className="flex flex-col lg:flex-row gap-4">
+        {/* Search */}
+        <div className="relative flex-1 lg:max-w-md">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <Search className="h-4 w-4 text-[var(--color-text-tertiary)]" />
+          </div>
+          <input
+            type="text"
+            className="block w-full pl-10 pr-3 py-2 border border-[var(--color-border)] rounded-lg text-[13px] font-medium bg-[var(--color-surface-alt)] text-[var(--color-text)] placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:border-transparent transition-all"
+            placeholder="Search by Center ID or Meal ID..."
+            value={filters.search}
+            onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
+          />
+          {filters.search && (
+            <button onClick={() => setFilters(prev => ({ ...prev, search: '' }))} className="absolute inset-y-0 right-0 pr-3 flex items-center text-[var(--color-text-tertiary)] hover:text-[var(--color-text)]">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+        
+        {/* Clear all */}
+        {hasActiveFilters && (
+          <button 
+            onClick={clearFilters}
+            className="hidden lg:flex items-center px-3 py-2 text-[12px] font-bold text-[var(--color-text-secondary)] hover:text-[var(--color-danger)] transition-colors ml-auto"
+          >
+            Clear Filters
+          </button>
+        )}
       </div>
 
-      <div className="relative">
-        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--color-ink-secondary)]" />
-        <input
-          type="text"
-          placeholder="Search center or meal ID..."
-          value={filters.search}
-          onChange={(e) => setFilters(f => ({ ...f, search: e.target.value }))}
-          className="w-full md:w-[220px] pl-8 pr-3 py-1.5 bg-transparent border border-[var(--color-hairline)] rounded-md text-[13px] placeholder:text-[var(--color-ink-secondary)] outline-none focus:border-[var(--color-brand)] focus:ring-1 focus:ring-[var(--color-brand)] transition-all"
-        />
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <FilterSelect label="Week" value={filters.week} options={distinctWeeks} onChange={(v) => setFilters(prev => ({ ...prev, week: v }))} placeholder="All Weeks" />
+        <FilterSelect label="City" value={filters.city} options={distinctCities} onChange={(v) => setFilters(prev => ({ ...prev, city: v, centerId: '' }))} placeholder="All Cities" />
+        <FilterSelect label="Center" value={filters.centerId} options={distinctCenters} onChange={(v) => setFilters(prev => ({ ...prev, centerId: v }))} placeholder="All Centers" />
+        <FilterSelect label="Category" value={filters.category} options={distinctCategories} onChange={(v) => setFilters(prev => ({ ...prev, category: v }))} placeholder="All Categories" />
+        <FilterSelect label="Cuisine" value={filters.cuisine} options={distinctCuisines} onChange={(v) => setFilters(prev => ({ ...prev, cuisine: v }))} placeholder="All Cuisines" />
       </div>
+      
+      {hasActiveFilters && (
+        <button 
+          onClick={clearFilters}
+          className="lg:hidden w-full mt-2 py-2 text-[12px] font-bold text-[var(--color-text-secondary)] bg-[var(--color-surface-alt)] rounded-lg hover:bg-[var(--color-border)] transition-colors"
+        >
+          Clear All Filters
+        </button>
+      )}
     </div>
   )
 }
 
-function FilterSelect({ label, value, options, onChange }: { label: string, value: string, options: string[], onChange: (v: string) => void }) {
+function FilterSelect({ label, value, options, onChange, placeholder }: { label: string, value: string, options: string[], onChange: (v: string) => void, placeholder: string }) {
   return (
-    <div className="flex items-center bg-[rgba(20,19,15,0.02)] border border-[var(--color-hairline)] rounded-md text-[12px] h-[32px]">
-      <span className="px-3 text-[var(--color-ink-secondary)] font-medium border-r border-[var(--color-hairline)] h-full flex items-center">
-        {label}
-      </span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="bg-transparent pl-3 pr-8 h-full outline-none font-semibold cursor-pointer appearance-none truncate max-w-[140px]"
-        style={{ backgroundImage: `url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23666%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E')`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right .7rem top 50%', backgroundSize: '.65rem auto' }}
-      >
-        <option value="">All</option>
-        {options.map(o => (
-          <option key={o} value={o}>{o}</option>
-        ))}
-      </select>
+    <div className="flex flex-col">
+      <label className="text-[10px] font-bold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-1.5">{label}</label>
+      <div className="relative">
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="appearance-none w-full bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-lg text-[13px] font-medium text-[var(--color-text)] py-2 pl-3 pr-8 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] transition-all cursor-pointer"
+        >
+          <option value="">{placeholder}</option>
+          {options.map(o => (
+            <option key={o} value={o}>{label === 'Week' ? `Week ${o}` : o}</option>
+          ))}
+        </select>
+        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-[var(--color-text-tertiary)]">
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+        </div>
+      </div>
     </div>
   )
 }

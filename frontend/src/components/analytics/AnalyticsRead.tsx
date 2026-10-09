@@ -37,17 +37,17 @@ export function AnalyticsRead({ dist, promo }: { dist: any, promo: any }) {
 
   return (
     <div className="mb-10 max-w-[800px]" aria-label="Analytical Read">
-      <h2 className="font-serif text-[28px] leading-[1.25] tracking-tight text-[var(--color-ink)] mb-4">
+      <h2 className="font-heading font-extrabold text-[24px] lg:text-[28px] leading-[1.3] tracking-tight text-[var(--color-text)] mb-6">
         {read.headline}
       </h2>
-      <div className="bg-[rgba(20,19,15,0.02)] border border-[var(--color-hairline)] rounded-lg p-5">
-        <h4 className="text-[11px] font-semibold text-[var(--color-ink-secondary)] uppercase tracking-wider mb-3">
-          Analytical Read
+      <div className="bg-[var(--color-surface-alt)] border border-[var(--color-border-subtle)] rounded-xl p-5 shadow-sm">
+        <h4 className="text-[11px] font-bold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-4">
+          Machine Synthesis
         </h4>
-        <ul className="space-y-2">
+        <ul className="space-y-3.5">
           {read.points.map((pt, i) => (
-            <li key={i} className="flex items-start space-x-3 text-[14px] text-[var(--color-ink)] leading-relaxed">
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-brand)] mt-[8px] flex-shrink-0" />
+            <li key={i} className="flex items-start text-[13px] font-medium text-[var(--color-text-secondary)] leading-relaxed">
+              <span className="text-[var(--color-accent)] mr-2.5 mt-0.5 opacity-70">•</span>
               <span>{pt}</span>
             </li>
           ))}

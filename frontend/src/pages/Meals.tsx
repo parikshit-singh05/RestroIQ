@@ -1,124 +1,102 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { getMealsAnalysis } from '../lib/api'
-import { useAppContext } from '../context/AppContext'
-import { AlertCircle, RefreshCw } from 'lucide-react'
+import { getMeals } from '../lib/api'
 import { MealsSummary } from '../components/meals/MealsSummary'
 import { MealsDistribution } from '../components/meals/MealsDistribution'
-import { MealsCategoryAnalysis } from '../components/meals/MealsCategoryAnalysis'
 import { MealsDirectory } from '../components/meals/MealsDirectory'
-import { MealForecastExplorer } from '../components/meals/MealForecastExplorer'
-
-export interface MealsFilterState {
-  week: number | '';
-  city: string;
-  center_id: number | '';
-  category: string;
-  cuisine: string;
-  search: string;
-}
+import { MealsCategoryAnalysis } from '../components/meals/MealsCategoryAnalysis'
+import { AlertCircle, RefreshCw, Search, X } from 'lucide-react'
 
 export function Meals() {
-  const { buffer } = useAppContext()
-  const bufferPct = buffer / 100
-  const [filters, setFilters] = useState<MealsFilterState>({ week: '', city: '', center_id: '', category: '', cuisine: '', search: '' })
-
-  const queryParams = {
-    ...(filters.week !== '' && { week: filters.week }),
-    ...(filters.city !== '' && { city: filters.city }),
-    ...(filters.center_id !== '' && { center_id: filters.center_id }),
-    ...(filters.category !== '' && { category: filters.category }),
-    ...(filters.cuisine !== '' && { cuisine: filters.cuisine }),
-  }
-
-  const { data: meals = [], isLoading, isError, refetch } = useQuery({
-    queryKey: ['meals_analysis', queryParams],
-    queryFn: () => getMealsAnalysis(queryParams)
+  const [search, setSearch] = useState('')
+  const { data, isLoading, isError, refetch } = useQuery({ 
+    queryKey: ['meals'], 
+    queryFn: getMeals, 
+    staleTime: 5 * 60 * 1000 
   })
 
-  const filteredMeals = useMemo(() => {
-    return meals.filter(m => {
-      if (filters.search) {
-        const s = filters.search.toLowerCase()
-        if (
-          !m.meal_id.toString().includes(s) && 
-          !m.category.toLowerCase().includes(s) && 
-          !m.cuisine.toLowerCase().includes(s)
-        ) return false;
-      }
-      return true;
-    })
-  }, [meals, filters])
+  const filteredData = useMemo(() => {
+    if (!data) return []
+    if (!search) return data
+    const s = search.toLowerCase()
+    return data.filter((m:any) => 
+      m.category.toLowerCase().includes(s) || 
+      m.cuisine.toLowerCase().includes(s) || 
+      `meal ${m.meal_id}`.includes(s) ||
+      m.meal_id.toString().includes(s)
+    )
+  }, [data, search])
 
-  const totalFilteredDemand = useMemo(() => filteredMeals.reduce((sum, m) => sum + m.predicted_orders, 0), [filteredMeals])
-
-  const topMeal = useMemo(() => {
-    if (!filteredMeals.length) return null
-    return [...filteredMeals].sort((a, b) => b.predicted_orders - a.predicted_orders)[0]
-  }, [filteredMeals])
-
-  const insight = topMeal && totalFilteredDemand > 0
-    ? `Meal ${topMeal.meal_id} (${topMeal.category}) represents the largest forecast volume (${((topMeal.predicted_orders / totalFilteredDemand) * 100).toFixed(1)}% of filtered view) across the planning horizon.`
-    : `Understand meal-level demand, forecast patterns, and preparation requirements across the network.`
-
-  if (isLoading && !meals.length) {
+  if (isLoading) {
     return (
-      <div className="max-w-[1120px] mx-auto pb-16 pt-8 animate-pulse">
-        <div className="h-10 bg-black/5 w-1/4 mb-4 rounded"></div>
-        <div className="h-4 bg-black/5 w-2/3 mb-12 rounded"></div>
-        <div className="h-24 bg-black/5 w-full mb-8 rounded"></div>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-           <div className="lg:col-span-2 h-80 bg-black/5 rounded"></div>
-           <div className="h-80 bg-black/5 rounded"></div>
+      <div className="w-full animate-pulse">
+        <div className="pt-6 lg:pt-8 mb-8 h-20 bg-[var(--color-border)] rounded-lg max-w-[800px]" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          {[1,2,3].map(i => <div key={i} className="h-28 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl" />)}
         </div>
-        <div className="h-64 bg-black/5 w-full rounded"></div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 mb-8">
+          <div className="h-[300px] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl" />
+          <div className="h-[300px] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl" />
+        </div>
       </div>
     )
   }
 
-  if (isError && !meals.length) {
+  if (isError || !data) {
     return (
-      <div className="max-w-[1120px] mx-auto flex flex-col items-center justify-center py-24">
-        <AlertCircle className="w-10 h-10 text-[var(--color-risk)] mb-4" />
-        <h2 className="text-lg font-semibold mb-2">Unable to load meal analysis</h2>
-        <button onClick={() => refetch()} className="flex items-center space-x-2 px-4 py-2 rounded-md bg-[var(--color-brand)] text-white text-[13px] font-medium mt-4 cursor-pointer">
-          <RefreshCw className="w-3.5 h-3.5" />
-          <span>Retry</span>
+      <div className="flex flex-col items-center justify-center py-24 w-full h-full">
+        <div className="w-16 h-16 rounded-full bg-[var(--color-danger-bg)] flex items-center justify-center mb-4">
+          <AlertCircle className="w-8 h-8 text-[var(--color-danger)]" />
+        </div>
+        <h2 className="text-lg font-heading font-bold text-[var(--color-text)] mb-2">Unable to load meals</h2>
+        <button
+          onClick={() => refetch()}
+          className="flex items-center space-x-2 px-5 py-2.5 rounded-lg bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white text-[14px] font-semibold transition-colors shadow-sm mt-4"
+        >
+          <RefreshCw className="w-4 h-4" />
+          <span>Retry Connection</span>
         </button>
       </div>
     )
   }
 
   return (
-    <div className="max-w-[1120px] mx-auto pb-16">
-      <header className="pt-8 mb-10 max-w-[800px]">
-        <h1 className="font-serif text-[28px] leading-[1.25] tracking-tight text-[var(--color-ink)] mb-2">
-          Meals
+    <div className="w-full pb-16 animate-in fade-in duration-500">
+      <header className="pt-6 lg:pt-8 mb-8 max-w-[800px]">
+        <h1 className="font-heading font-extrabold text-[28px] lg:text-[32px] leading-[1.2] tracking-tight text-[var(--color-text)] mb-2">
+          Menu Catalog
         </h1>
-        <p className="text-[15px] text-[var(--color-ink-secondary)] leading-relaxed">
-          {insight}
+        <p className="text-[15px] font-medium text-[var(--color-text-secondary)]">
+          Analyze item configurations, price points, and categorical distribution.
         </p>
       </header>
 
-      <MealsSummary meals={filteredMeals} totalDemand={totalFilteredDemand} bufferPct={bufferPct} topMeal={topMeal} />
-      
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
-        <div className="lg:col-span-2 flex flex-col gap-8">
-          <MealsDistribution meals={filteredMeals} totalDemand={totalFilteredDemand} bufferPct={bufferPct} />
-          <MealForecastExplorer meals={filteredMeals} bufferPct={bufferPct} filters={filters} />
+      <div className="mb-6 relative max-w-md">
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <Search className="h-4 w-4 text-[var(--color-text-tertiary)]" />
         </div>
-        <div>
-          <MealsCategoryAnalysis meals={filteredMeals} totalDemand={totalFilteredDemand} filters={filters} setFilters={setFilters} />
-        </div>
+        <input
+          type="text"
+          className="block w-full pl-10 pr-10 py-3 border border-[var(--color-border)] rounded-xl text-[13px] font-medium bg-[var(--color-surface)] shadow-sm text-[var(--color-text)] placeholder-[var(--color-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] transition-all"
+          placeholder="Search by ID, Category, or Cuisine..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        {search && (
+          <button onClick={() => setSearch('')} className="absolute inset-y-0 right-0 pr-3 flex items-center text-[var(--color-text-tertiary)] hover:text-[var(--color-text)]">
+            <X className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
-      <MealsDirectory 
-        meals={filteredMeals}
-        totalDemand={totalFilteredDemand}
-        filters={filters}
-        setFilters={setFilters}
-        bufferPct={bufferPct}
-      />
+      <MealsSummary data={filteredData} totalMeals={data.length} />
+      
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 mb-8">
+        <MealsDistribution data={filteredData} />
+        <MealsCategoryAnalysis data={filteredData} />
+      </div>
+
+      <MealsDirectory data={filteredData} />
     </div>
   )
 }

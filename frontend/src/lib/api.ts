@@ -1,4 +1,4 @@
-import axios from 'axios'
+﻿import axios from 'axios'
 import type { CenterAnalysis, MealAnalysis, ForecastSummary, HistorySummary, InventoryRecommendation, CenterInfo, MealInfo } from './types'
 
 export const api = axios.create({
@@ -13,7 +13,7 @@ export const getHistorySummary = (): Promise<HistorySummary[]> =>
 
 
 export interface AnalyticsData {
-  model?: any;
+  model?: any; raw_sample?: any[]; model_features?: any[];
   trend: { week: number, total_orders: number, average_orders: number }[]
   distribution: {
     category: { name: string, value: number }[]
@@ -60,3 +60,4 @@ export async function getMealsAnalysis(params?: { week?: number, city?: string, 
   const res = await api.get('/meals/analysis', { params })
   return res.data
 }
+

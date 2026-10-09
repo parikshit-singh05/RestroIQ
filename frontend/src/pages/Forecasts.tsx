@@ -1,19 +1,18 @@
-import { useState, useMemo } from 'react'
+﻿import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { getForecastSummary, getDetailedForecasts } from '../lib/api'
+import { getDetailedForecasts } from '../lib/api'
 import { getDistinct } from '../lib/computations'
-import { ForecastExplorer } from '../components/forecasts/ForecastExplorer'
 import { ForecastFilters, type FilterState } from '../components/forecasts/ForecastFilters'
+import { ForecastTable } from '../components/forecasts/ForecastTable'
+import { ForecastSkeleton } from '../components/forecasts/ForecastSkeleton'
+import { ForecastInsights } from '../components/forecasts/ForecastInsights'
 import { WeekDetail } from '../components/forecasts/WeekDetail'
 import { CategoryBreakdown } from '../components/forecasts/CategoryBreakdown'
-import { ForecastTable } from '../components/forecasts/ForecastTable'
-import { ForecastInsights } from '../components/forecasts/ForecastInsights'
-import { ForecastSkeleton } from '../components/forecasts/ForecastSkeleton'
 import { AlertCircle, RefreshCw } from 'lucide-react'
 
 export function Forecasts() {
-  const [selectedWeek, setSelectedWeek] = useState<number>(146)
   const [filters, setFilters] = useState<FilterState>({
+    week: '',
     city: '',
     centerId: '',
     category: '',
@@ -21,35 +20,29 @@ export function Forecasts() {
     search: ''
   })
 
-  // Data Fetching
-  const summaryQ = useQuery({ queryKey: ['forecast_summary'], queryFn: getForecastSummary })
-  const detailQ = useQuery({ 
-    queryKey: ['forecast_detail', selectedWeek], 
-    queryFn: () => getDetailedForecasts(selectedWeek, 5000),
-    staleTime: 5 * 60 * 1000 // Keep cached when swapping weeks
+  const { data, isLoading, isError, refetch } = useQuery({ 
+    queryKey: ['forecast_detail_all'], 
+    queryFn: () => getDetailedForecasts(undefined, 50000), 
+    staleTime: 5 * 60 * 1000 
   })
 
-  const isLoading = summaryQ.isLoading || detailQ.isLoading
-  const isError = summaryQ.isError || detailQ.isError
-
-  // Distinct values for filters (computed from raw fetched data)
-  const rawData = detailQ.data ?? []
-  const distinctCities = useMemo(() => getDistinct(rawData, 'simulated_city'), [rawData])
+  const distinctWeeks = useMemo(() => getDistinct(data || [], 'week'), [data])
+  const distinctCities = useMemo(() => getDistinct(data || [], 'simulated_city'), [data])
   const distinctCenters = useMemo(() => {
-    const base = filters.city ? rawData.filter(d => d.simulated_city === filters.city) : rawData
+    const base = filters.city ? (data || []).filter(d => d.simulated_city === filters.city) : (data || [])
     return getDistinct(base, 'center_id')
-  }, [rawData, filters.city])
-  const distinctCategories = useMemo(() => getDistinct(rawData, 'category'), [rawData])
-  const distinctCuisines = useMemo(() => getDistinct(rawData, 'cuisine'), [rawData])
+  }, [data, filters.city])
+  const distinctCategories = useMemo(() => getDistinct(data || [], 'category'), [data])
+  const distinctCuisines = useMemo(() => getDistinct(data || [], 'cuisine'), [data])
 
-  // Apply filters client-side instantly
   const filteredData = useMemo(() => {
-    return rawData.filter(d => {
+    if (!data) return []
+    return data.filter(d => {
+      if (filters.week && String(d.week) !== filters.week) return false
       if (filters.city && d.simulated_city !== filters.city) return false
       if (filters.centerId && String(d.center_id) !== filters.centerId) return false
       if (filters.category && d.category !== filters.category) return false
       if (filters.cuisine && d.cuisine !== filters.cuisine) return false
-      
       if (filters.search) {
         const s = filters.search.toLowerCase()
         const centerMatch = `center ${d.center_id}`.includes(s) || d.center_id.toString().includes(s)
@@ -58,75 +51,72 @@ export function Forecasts() {
       }
       return true
     })
-  }, [rawData, filters])
+  }, [data, filters])
 
   if (isLoading) return <ForecastSkeleton />
 
   if (isError) {
     return (
-      <div className="max-w-[1120px] mx-auto flex flex-col items-center justify-center py-24">
-        <AlertCircle className="w-10 h-10 text-[var(--color-risk)] mb-4" />
-        <h2 className="text-lg font-semibold mb-2">Unable to load forecasts</h2>
+      <div className="flex flex-col items-center justify-center py-24 w-full h-full">
+        <div className="w-16 h-16 rounded-full bg-[var(--color-danger-bg)] flex items-center justify-center mb-4">
+          <AlertCircle className="w-8 h-8 text-[var(--color-danger)]" />
+        </div>
+        <h2 className="text-lg font-heading font-bold text-[var(--color-text)] mb-2">Unable to load forecasts</h2>
         <button
-          onClick={() => { summaryQ.refetch(); detailQ.refetch() }}
-          className="flex items-center space-x-2 px-4 py-2 rounded-md bg-[var(--color-brand)] text-white text-[13px] font-medium mt-4 cursor-pointer"
+          onClick={() => refetch()}
+          className="flex items-center space-x-2 px-5 py-2.5 rounded-lg bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white text-[14px] font-semibold transition-colors shadow-sm mt-4"
         >
-          <RefreshCw className="w-3.5 h-3.5" />
-          <span>Retry</span>
+          <RefreshCw className="w-4 h-4" />
+          <span>Retry Connection</span>
         </button>
       </div>
     )
   }
 
-  const summary = summaryQ.data ?? []
+  const selectedWeek = filters.week ? Number(filters.week) : 146
 
   return (
-    <div className="max-w-[1120px] mx-auto pb-16">
-      <header className="pt-8 mb-8 max-w-[760px]">
-        <h1 className="font-serif text-[28px] leading-[1.25] tracking-tight text-[var(--color-ink)] mb-1.5">
-          Detailed Forecasts
+    <div className="w-full pb-16 animate-in fade-in duration-500">
+      <header className="pt-6 lg:pt-8 mb-8 max-w-[800px]">
+        <h1 className="font-heading font-extrabold text-[28px] lg:text-[32px] leading-[1.2] tracking-tight text-[var(--color-text)] mb-2">
+          Forecast Workspace
         </h1>
-        <p className="text-[15px] text-[var(--color-ink-secondary)]">
-          Explore the 10-week outlook and drill down into specific predictions.
+        <p className="text-[15px] font-medium text-[var(--color-text-secondary)]">
+          Explore and filter item-level predictions across the 10-week horizon.
         </p>
       </header>
 
-      {/* 1. 10-Week Explorer */}
-      <ForecastExplorer 
-        summary={summary} 
-        selectedWeek={selectedWeek} 
-        onSelectWeek={setSelectedWeek} 
-      />
-
-      {/* 2. Global Filters */}
       <ForecastFilters 
         filters={filters} 
         setFilters={setFilters}
+        distinctWeeks={distinctWeeks}
         distinctCities={distinctCities}
         distinctCenters={distinctCenters}
         distinctCategories={distinctCategories}
         distinctCuisines={distinctCuisines}
       />
 
-      {/* 3. Snapshot & Breakdown */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 mb-8 mt-6">
         <div className="lg:col-span-1">
-          <ForecastInsights data={filteredData} week={selectedWeek} />
+          <ForecastInsights data={filteredData} />
         </div>
-        <div className="lg:col-span-2 flex flex-col space-y-8">
+        <div className="lg:col-span-2 flex flex-col space-y-6 lg:space-y-8">
           <WeekDetail week={selectedWeek} data={filteredData} />
           <CategoryBreakdown data={filteredData} />
         </div>
       </div>
 
-      {/* 4. Detailed Table */}
-      <h3 className="text-[15px] font-semibold tracking-tight mb-4 flex items-center">
-        Forecast Details
-        <span className="ml-3 px-2 py-0.5 rounded bg-[rgba(20,19,15,0.04)] text-[11px] font-medium text-[var(--color-ink-secondary)]">
-          {filteredData.length.toLocaleString('en-IN')} results
-        </span>
-      </h3>
-      <ForecastTable data={filteredData} />
+      <div className="mt-10">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-[16px] font-heading font-bold tracking-tight text-[var(--color-text)]">
+            Forecast Details
+          </h3>
+          <span className="px-2.5 py-1 rounded bg-[var(--color-surface-alt)] border border-[var(--color-border)] text-[12px] font-bold text-[var(--color-text-secondary)]">
+            {filteredData.length.toLocaleString('en-IN')} results
+          </span>
+        </div>
+        <ForecastTable data={filteredData} />
+      </div>
     </div>
   )
 }

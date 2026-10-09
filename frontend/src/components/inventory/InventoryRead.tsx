@@ -1,71 +1,32 @@
-import { useMemo } from 'react'
-import type { ForecastSummary, InventoryRecommendation } from '../../lib/types'
+import { FileText } from 'lucide-react'
 import { useAppContext } from '../../context/AppContext'
-import { formatCompact } from '../../lib/format'
-import { computePeakWeek } from '../../lib/computations'
 
-interface Props {
-  summary: ForecastSummary[]
-  detailed: InventoryRecommendation[]
-}
-
-export function InventoryRead({ summary, detailed }: Props) {
+export function InventoryRead({ data }: { data: any[] }) {
   const { buffer } = useAppContext()
-
-  const { headline, opsRead } = useMemo(() => {
-    if (!summary.length || !detailed.length) return { headline: '', opsRead: [] }
-    
-    const totalDemand = summary.reduce((sum, s) => sum + s.total_predicted_orders, 0)
-    const totalPrep = totalDemand * (1 + buffer / 100)
-    
-    let headline = ''
-    if (buffer > 0) {
-      headline = `At a ${buffer}% buffer, the 10-week plan calls for ${formatCompact(totalPrep)} prepared orders.`
-    } else {
-      headline = `The baseline 10-week preparation plan strictly matches ${formatCompact(totalPrep)} predicted orders.`
-    }
-
-    const peak = computePeakWeek(summary)
-    
-    let topMeal = { id: 0, prep: 0 }
-    const mealVols = new Map<number, number>()
-    
-    detailed.forEach(d => {
-      const p = d.predicted_orders * (1 + buffer / 100)
-      const cur = (mealVols.get(d.meal_id) || 0) + p
-      mealVols.set(d.meal_id, cur)
-      if (cur > topMeal.prep) topMeal = { id: d.meal_id, prep: cur }
-    })
-
-    const opsRead = [
-      `Week ${peak.week} requires the highest preparation volume across the planning horizon.`,
-      `Meal ${topMeal.id} contributes the largest preparation requirement in the current active week.`,
-      `Prioritize preparation capacity around the highest-volume weeks and center/meal combinations.`
-    ]
-
-    return { headline, opsRead }
-  }, [summary, detailed, buffer])
-
-  if (!summary.length) return null
+  const totalDemand = data.reduce((s, d) => s + d.predicted_orders, 0)
+  
+  if (totalDemand === 0) return null
 
   return (
-    <div className="mb-10 max-w-[800px]" aria-label="Inventory Read">
-      <h2 className="font-serif text-[28px] leading-[1.25] tracking-tight text-[var(--color-ink)] mb-4">
-        {headline}
-      </h2>
-      <div className="bg-[rgba(20,19,15,0.02)] border border-[var(--color-hairline)] rounded-lg p-5">
-        <h4 className="text-[11px] font-semibold text-[var(--color-ink-secondary)] uppercase tracking-wider mb-3">
-          Operational Read & What To Do
-        </h4>
-        <ul className="space-y-2">
-          {opsRead.map((read, i) => (
-            <li key={i} className="flex items-start space-x-3 text-[14px] text-[var(--color-ink)] leading-relaxed">
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-brand)] mt-[8px] flex-shrink-0" />
-              <span>{read}</span>
-            </li>
-          ))}
-        </ul>
+    <div className="bg-[var(--color-surface-alt)] border border-[var(--color-border-subtle)] rounded-xl p-5">
+      <div className="flex items-center space-x-2 mb-4">
+        <FileText className="w-4 h-4 text-[var(--color-accent)]" />
+        <h3 className="text-[14px] font-bold text-[var(--color-text)] uppercase tracking-wider">Action Plan</h3>
       </div>
+      <ul className="space-y-3.5">
+        <li className="flex items-start text-[13px] font-medium text-[var(--color-text-secondary)] leading-relaxed">
+          <span className="text-[var(--color-accent)] mr-2.5 mt-0.5 opacity-70">•</span>
+          <span>Ensure baseline inventory covers <strong>{totalDemand.toLocaleString('en-IN')}</strong> base orders.</span>
+        </li>
+        <li className="flex items-start text-[13px] font-medium text-[var(--color-text-secondary)] leading-relaxed">
+          <span className="text-[var(--color-accent)] mr-2.5 mt-0.5 opacity-70">•</span>
+          <span>Procure additional <strong>{buffer}%</strong> perishable stock to cover local variance.</span>
+        </li>
+        <li className="flex items-start text-[13px] font-medium text-[var(--color-text-secondary)] leading-relaxed">
+          <span className="text-[var(--color-accent)] mr-2.5 mt-0.5 opacity-70">•</span>
+          <span>Alert supply chain regarding top 3 centers driving majority of required volume.</span>
+        </li>
+      </ul>
     </div>
   )
 }

@@ -1,51 +1,27 @@
 import { useAppContext } from '../../context/AppContext'
 import { formatCompact } from '../../lib/format'
-import type { ForecastSummary } from '../../lib/types'
-import { computePeakWeek } from '../../lib/computations'
 
-interface Props {
-  summary: ForecastSummary[]
-}
-
-export function InventoryStrip({ summary }: Props) {
+export function InventoryStrip({ data }: { data: any[] }) {
   const { buffer } = useAppContext()
-  if (!summary.length) return null
-
-  const totalDemand = summary.reduce((sum, s) => sum + s.total_predicted_orders, 0)
+  
+  const totalDemand = data.reduce((s, d) => s + d.predicted_orders, 0)
   const totalPrep = totalDemand * (1 + buffer / 100)
-  const extraBuffer = totalPrep - totalDemand
-  const peak = computePeakWeek(summary)
-  const peakPrep = peak.value * (1 + buffer / 100)
+  const surplus = totalPrep - totalDemand
 
   return (
-    <div className="flex flex-col md:flex-row items-center justify-between border-y border-[var(--color-hairline)] py-5 mb-8">
-      <StripItem label="Forecast Demand" value={formatCompact(totalDemand)} sub="10-week horizon" />
-      <StripDivider />
-      <StripItem label="Recommended Preparation" value={formatCompact(totalPrep)} sub={`${buffer}% buffer`} highlight />
-      <StripDivider />
-      <StripItem label="Buffer Volume" value={formatCompact(extraBuffer)} sub="additional planned prep" />
-      <StripDivider />
-      <StripItem label="Peak Preparation" value={`W${peak.week}`} sub={`${formatCompact(peakPrep)} orders`} />
-    </div>
-  )
-}
-
-function StripItem({ label, value, sub, highlight }: { label: string, value: string, sub: string, highlight?: boolean }) {
-  return (
-    <div className="flex-1 text-center py-2">
-      <div className="text-[10px] font-semibold text-[var(--color-ink-secondary)] uppercase tracking-wider mb-1">
-        {label}
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+      <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-5 shadow-sm">
+        <p className="text-[11px] font-bold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">Predicted Demand</p>
+        <p className="text-[28px] font-heading font-bold tabular-nums text-[var(--color-text)] leading-none">{formatCompact(totalDemand)}</p>
       </div>
-      <div className={`text-2xl font-serif tabular-nums tracking-tight mb-0.5 ${highlight ? 'text-[var(--color-brand)]' : 'text-[var(--color-ink)]'}`}>
-        {value}
+      <div className="bg-[var(--color-success-bg)] border border-[var(--color-success)]/20 rounded-xl p-5 shadow-sm">
+        <p className="text-[11px] font-bold text-[var(--color-success)] uppercase tracking-wider mb-2">Prep Target (With Buffer)</p>
+        <p className="text-[28px] font-heading font-bold tabular-nums text-[var(--color-success)] leading-none">{formatCompact(totalPrep)}</p>
       </div>
-      <div className="text-[12px] text-[var(--color-ink-secondary)]">
-        {sub}
+      <div className="bg-[var(--color-accent-subtle)] border border-[var(--color-accent)]/20 rounded-xl p-5 shadow-sm">
+        <p className="text-[11px] font-bold text-[var(--color-accent)] uppercase tracking-wider mb-2">Expected Surplus</p>
+        <p className="text-[28px] font-heading font-bold tabular-nums text-[var(--color-accent)] leading-none">{formatCompact(surplus)}</p>
       </div>
     </div>
   )
-}
-
-function StripDivider() {
-  return <div className="hidden md:block w-px h-12 bg-[var(--color-hairline)]" />
 }
