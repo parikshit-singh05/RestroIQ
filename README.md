@@ -198,6 +198,4 @@ The backend exposes several read-only endpoints prefixed with `/api/v1` that pow
 - **Rasraj Suri** — [GitHub Profile](https://github.com/Rasraj177)
 
 ---
-<div align="center">
-  <i>Developed as a final-year academic project.</i>
-</div>
+
