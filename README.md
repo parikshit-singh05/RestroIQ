@@ -90,7 +90,8 @@ graph LR
     G --> I[data/processed/]
   end
 
-  A <-->|REST API (/api/v1)| D
+  A -->|"REST API (/api/v1)"| D
+  D --> A
   F -.-> I
   E -.-> H
 ```
