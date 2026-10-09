@@ -1,0 +1,34 @@
+[
+  {
+    "name": "Rolling Averages (4, 8, 12 weeks)",
+    "imp": 0.736325881748999
+  },
+  {
+    "name": "Historical Demand (Lags 1-4)",
+    "imp": 0.13523508969310702
+  },
+  {
+    "name": "Promotional Status",
+    "imp": 0.05233157384971312
+  },
+  {
+    "name": "Pricing & Discounts",
+    "imp": 0.04039420961281732
+  },
+  {
+    "name": "Simulated Weather Context",
+    "imp": 0.010947114580208105
+  },
+  {
+    "name": "Calendar / Seasonality",
+    "imp": 0.010103903215161216
+  },
+  {
+    "name": "Item Characteristics",
+    "imp": 0.009469915878562439
+  },
+  {
+    "name": "Geographic & Center",
+    "imp": 0.005192311421431797
+  }
+]

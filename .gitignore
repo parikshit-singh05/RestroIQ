@@ -1,0 +1,17 @@
+# Node & Frontend
+node_modules/
+dist/
+.env
+.env.local
+
+# Python & Backend
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.venv/
+
+# OS Generated
+.DS_Store
+Thumbs.db
