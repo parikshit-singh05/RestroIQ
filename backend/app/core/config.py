@@ -4,6 +4,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     PROJECT_NAME: str = "RestroIQ API"
     API_V1_STR: str = "/api/v1"
+    FRONTEND_URL: str = "http://localhost:5173"
     
     BASE_DIR: str = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     DATA_DIR: str = os.path.join(BASE_DIR, "data")

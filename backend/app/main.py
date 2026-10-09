@@ -14,7 +14,8 @@ app = FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[origin.strip() for origin in settings.FRONTEND_URL.split(",")],
+    # Allow Vercel preview URLs via comma-separated string if needed
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
