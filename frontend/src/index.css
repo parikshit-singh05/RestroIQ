@@ -1,4 +1,4 @@
-@import "tailwindcss";
+﻿@import "tailwindcss";
 
 @theme {
   --color-bg: var(--color-bg);
@@ -90,7 +90,7 @@
   --color-chart-4: #F472B6;
   --color-chart-5: #22D3EE;
   --color-chart-6: #A78BFA;
-  --color-chart-hist: #475569;
+  --color-chart-hist: #94A3B8;
 }
 
 body {

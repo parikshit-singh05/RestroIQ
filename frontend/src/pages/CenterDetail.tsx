@@ -1,6 +1,7 @@
-import { useParams, Link } from 'react-router-dom'
+﻿import { useParams, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { getCenters, getDetailedForecasts } from '../lib/api'
+import { getCenters, getDetailedForecasts, getCentersAnalysis } from '../lib/api'
+import { DetailChart } from '../components/shared/DetailChart'
 import { ForecastTable } from '../components/forecasts/ForecastTable'
 import { formatCompact } from '../lib/format'
 import { ArrowLeft, Building2, MapPin } from 'lucide-react'
@@ -9,18 +10,20 @@ export function CenterDetail() {
   const { id } = useParams()
   
   const centersQuery = useQuery({ queryKey: ['centers'], queryFn: getCenters, staleTime: 5 * 60 * 1000 })
+  const analysisQuery = useQuery({ queryKey: ['centers_analysis'], queryFn: getCentersAnalysis, staleTime: 5 * 60 * 1000 })
   const forecastQuery = useQuery({ 
     queryKey: ['forecast_center', id], 
     queryFn: () => getDetailedForecasts(undefined, 50000), 
     staleTime: 5 * 60 * 1000 
   })
 
-  if (centersQuery.isLoading || forecastQuery.isLoading) {
+  if (centersQuery.isLoading || forecastQuery.isLoading || analysisQuery.isLoading) {
     return <div className="w-full h-full flex items-center justify-center text-[13px] font-medium text-[var(--color-text-tertiary)] p-12">Loading center details...</div>
   }
 
   const center = centersQuery.data?.find((c: any) => String(c.center_id) === id)
   const centerForecasts = forecastQuery.data?.filter(f => String(f.center_id) === id) || []
+  const centerHistory = analysisQuery.data?.find((c: any) => String(c.center_id) === id)?.trend || []
 
   if (!center) {
     return <div className="p-8 text-center text-[13px] font-medium text-[var(--color-text-tertiary)] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl">Center not found.</div>
@@ -67,6 +70,7 @@ export function CenterDetail() {
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-[18px] font-heading font-bold tracking-tight text-[var(--color-text)]">Center Forecast Manifest</h3>
       </div>
+      <DetailChart history={centerHistory} forecast={centerForecasts} title="10-Week Demand Trajectory" subtitle="Historical actuals vs predicted orders for Center ${center.center_id} (${center.simulated_city})" />
       <ForecastTable data={centerForecasts} />
     </div>
   )

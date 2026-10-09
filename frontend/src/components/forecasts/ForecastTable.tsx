@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { formatCompact } from '../../lib/format'
 import { useAppContext } from '../../context/AppContext'
 import { ChevronDown, ChevronUp, MapPin } from 'lucide-react'
@@ -7,7 +7,7 @@ import { Link } from 'react-router-dom'
 export function ForecastTable({ data }: { data: any[] }) {
   const { buffer } = useAppContext()
   const [page, setPage] = useState(1)
-  const pageSize = 50
+  const pageSize = 15
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc'|'desc' }>({ key: 'predicted_orders', direction: 'desc' })
 
   const sortedData = [...data].sort((a, b) => {

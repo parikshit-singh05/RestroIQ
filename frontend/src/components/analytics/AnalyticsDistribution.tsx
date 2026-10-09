@@ -1,15 +1,18 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { formatCompact } from '../../lib/format'
 import { PieChart as PieIcon } from 'lucide-react'
 
 export function AnalyticsDistribution({ dist }: { dist: any }) {
   const [active, setActive] = useState<'category'|'cuisine'|'center'|'city'>('category')
+  const [expanded, setExpanded] = useState(false)
   
   const data = dist[active] || []
   if (!data.length) return null
   
   const max = Math.max(...data.map((d: any) => d.value))
   const total = dist.total_demand || data.reduce((s: number, d: any) => s + d.value, 0)
+  
+  const displayData = active === 'city' && !expanded ? data.slice(0, 10) : (active === 'city' ? data.slice(0, 15) : data)
 
   return (
     <div className="border border-[var(--color-border)] rounded-xl bg-[var(--color-surface)] p-6 shadow-sm flex flex-col h-full" aria-label="Demand Distribution">
@@ -22,7 +25,7 @@ export function AnalyticsDistribution({ dist }: { dist: any }) {
           {['category', 'cuisine', 'center', 'city'].map(t => (
             <button
               key={t}
-              onClick={() => setActive(t as any)}
+              onClick={() => { setActive(t as any); setExpanded(false); }}
               className={`px-3 py-1.5 text-[12px] font-bold rounded-md capitalize transition-all ${active === t ? 'bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm' : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text)]'}`}
             >
               {t}
@@ -32,7 +35,7 @@ export function AnalyticsDistribution({ dist }: { dist: any }) {
       </div>
       
       <div className="space-y-4 flex-grow overflow-y-auto custom-scrollbar pr-2">
-        {data.map((d: any) => (
+        {displayData.map((d: any) => (
           <div key={d.name} className="relative group">
             <div className="flex justify-between items-end mb-1.5">
               <span className="text-[13px] font-bold text-[var(--color-text)] truncate max-w-[200px]" title={String(d.name)}>{d.name}</span>
@@ -48,6 +51,13 @@ export function AnalyticsDistribution({ dist }: { dist: any }) {
             </div>
           </div>
         ))}
+        {active === 'city' && data.length > 10 && (
+          <div className="pt-2 text-center">
+            <button onClick={() => setExpanded(!expanded)} className="text-[12px] font-bold text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] transition-colors">
+              {expanded ? "Show less" : `Show more (${Math.min(data.length - 10, 5)})`}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

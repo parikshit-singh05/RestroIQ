@@ -1,4 +1,4 @@
-import { Search, X } from 'lucide-react'
+﻿import { Search, X } from 'lucide-react'
 
 export interface FilterState {
   week: string
@@ -25,7 +25,7 @@ export function ForecastFilters({ filters, setFilters, distinctWeeks, distinctCi
   const clearFilters = () => setFilters({ week: '', city: '', centerId: '', category: '', cuisine: '', search: '' })
 
   return (
-    <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-4 lg:p-5 shadow-sm space-y-4">
+    <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-4 lg:p-5 shadow-sm space-y-4 sticky top-0 z-20">
       <div className="flex flex-col lg:flex-row gap-4">
         {/* Search */}
         <div className="relative flex-1 lg:max-w-md">

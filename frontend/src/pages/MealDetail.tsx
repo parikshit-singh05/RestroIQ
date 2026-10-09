@@ -1,6 +1,7 @@
-import { useParams, Link } from 'react-router-dom'
+﻿import { useParams, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { getMeals, getDetailedForecasts } from '../lib/api'
+import { getMeals, getDetailedForecasts, getMealsAnalysis } from '../lib/api'
+import { DetailChart } from '../components/shared/DetailChart'
 import { MealForecastExplorer } from '../components/meals/MealForecastExplorer'
 import { ArrowLeft, UtensilsCrossed, Tag, Info } from 'lucide-react'
 
@@ -8,18 +9,20 @@ export function MealDetail() {
   const { id } = useParams()
   
   const mealsQuery = useQuery({ queryKey: ['meals'], queryFn: getMeals, staleTime: 5 * 60 * 1000 })
+  const analysisQuery = useQuery({ queryKey: ['meals_analysis'], queryFn: () => getMealsAnalysis(), staleTime: 5 * 60 * 1000 })
   const forecastQuery = useQuery({ 
     queryKey: ['forecast_meal', id], 
     queryFn: () => getDetailedForecasts(undefined, 50000), 
     staleTime: 5 * 60 * 1000 
   })
 
-  if (mealsQuery.isLoading || forecastQuery.isLoading) {
+  if (mealsQuery.isLoading || forecastQuery.isLoading || analysisQuery.isLoading) {
     return <div className="w-full h-full flex items-center justify-center text-[13px] font-medium text-[var(--color-text-tertiary)] p-12">Loading meal details...</div>
   }
 
   const meal = mealsQuery.data?.find((m: any) => String(m.meal_id) === id)
   const mealForecasts = forecastQuery.data?.filter(f => String(f.meal_id) === id) || []
+  const mealHistory = analysisQuery.data?.find((m: any) => String(m.meal_id) === id)?.trend || []
 
   if (!meal) {
     return <div className="p-8 text-center text-[13px] font-medium text-[var(--color-text-tertiary)] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl">Meal not found.</div>
@@ -63,7 +66,9 @@ export function MealDetail() {
         </p>
       </div>
 
+      <DetailChart history={mealHistory} forecast={mealForecasts} title="10-Week Demand Trajectory" subtitle="Historical actuals vs predicted orders for Meal ${meal.meal_id} (${meal.category})" />
       <MealForecastExplorer forecasts={mealForecasts} />
     </div>
   )
 }
+

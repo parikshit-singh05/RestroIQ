@@ -97,10 +97,11 @@ export function Analytics() {
         <AnalyticsDistribution dist={data.distribution} />
         <div className="flex flex-col space-y-6 lg:space-y-8">
           <AnalyticsPromotions promo={data.promotion} />
-          <AnalyticsModel model={data.model_features || []} />
+          <AnalyticsModel model={data.model || []} />
         </div>
       </div>
     </div>
   )
 }
+
 

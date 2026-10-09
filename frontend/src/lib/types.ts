@@ -1,4 +1,4 @@
-export interface ForecastSummary {
+﻿export interface ForecastSummary {
   week: number
   total_predicted_orders: number
   average_predicted_orders: number
@@ -58,6 +58,7 @@ export interface DetailedForecast {
   predicted_orders: number
 }
 export interface CenterAnalysis {
+  trend?: any[];
   center_id: number;
   simulated_city: string;
   state: string;
@@ -83,6 +84,7 @@ export interface CenterContribution {
 }
 
 export interface MealAnalysis {
+  trend?: any[];
   meal_id: number
   category: string
   cuisine: string
@@ -95,3 +97,4 @@ export interface MealAnalysis {
   historical_trajectory: { week: number, num_orders: number }[]
   center_contributions: CenterContribution[]
 }
+

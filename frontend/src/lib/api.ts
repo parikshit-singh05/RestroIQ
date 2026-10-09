@@ -13,7 +13,7 @@ export const getHistorySummary = (): Promise<HistorySummary[]> =>
 
 
 export interface AnalyticsData {
-  model?: any; raw_sample?: any[]; model_features?: any[];
+  model?: any[]; raw_sample?: any[];
   trend: { week: number, total_orders: number, average_orders: number }[]
   distribution: {
     category: { name: string, value: number }[]
@@ -60,4 +60,6 @@ export async function getMealsAnalysis(params?: { week?: number, city?: string, 
   const res = await api.get('/meals/analysis', { params })
   return res.data
 }
+
+
 

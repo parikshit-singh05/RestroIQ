@@ -1,4 +1,4 @@
-export interface InvFilterState {
+﻿export interface InvFilterState {
   week: string
   category: string
   centerId: string

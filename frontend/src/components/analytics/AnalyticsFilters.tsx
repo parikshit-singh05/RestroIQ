@@ -1,4 +1,4 @@
-export interface AnalyticsFilterState {
+﻿export interface AnalyticsFilterState {
   start_week: string
   end_week: string
   city: string
@@ -18,7 +18,7 @@ interface Props {
 
 export function AnalyticsFilters({ filters, setFilters, distinctCities, distinctCenters, distinctCategories, distinctCuisines }: Props) {
   return (
-    <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-4 shadow-sm mb-10 flex flex-wrap gap-4 items-end">
+    <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-4 shadow-sm mb-10 flex flex-wrap gap-4 items-end sticky top-0 z-20">
       
       <div className="flex flex-col">
         <label className="text-[10px] font-bold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-1.5">Horizon (Weeks)</label>

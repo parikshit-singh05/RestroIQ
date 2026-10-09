@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+﻿import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getMeals } from '../lib/api'
 import { MealsSummary } from '../components/meals/MealsSummary'
@@ -71,7 +71,7 @@ export function Meals() {
         </p>
       </header>
 
-      <div className="mb-6 relative max-w-md">
+      <div className="mb-6 relative max-w-md sticky top-0 z-20">
         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
           <Search className="h-4 w-4 text-[var(--color-text-tertiary)]" />
         </div>
