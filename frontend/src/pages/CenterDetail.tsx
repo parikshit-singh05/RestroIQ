@@ -16,7 +16,7 @@ export function CenterDetail() {
   const analysisQuery = useQuery({ queryKey: ['centers_analysis'], queryFn: getCentersAnalysis, staleTime: 5 * 60 * 1000 })
   const forecastQuery = useQuery({
     queryKey: ['forecast_center', id],
-    queryFn: () => getDetailedForecasts(undefined, 50000),
+    queryFn: () => getDetailedForecasts({ center_id: Number(id), limit: 5000 }),
     staleTime: 5 * 60 * 1000
   })
 

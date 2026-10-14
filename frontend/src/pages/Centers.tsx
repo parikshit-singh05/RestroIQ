@@ -1,4 +1,5 @@
 ﻿import { useState, useMemo } from 'react'
+import { useAppContext } from '../context/AppContext'
 import { useQuery } from '@tanstack/react-query'
 import { getCenters } from '../lib/api'
 import { CentersSummary } from '../components/centers/CentersSummary'
@@ -7,20 +8,25 @@ import { CentersDirectory } from '../components/centers/CentersDirectory'
 import { AlertCircle, RefreshCw, Search, X } from 'lucide-react'
 
 export function Centers() {
+  const { scopeCenterId, setScopeCenterId } = useAppContext()
   const [search, setSearch] = useState('')
-  const { data, isLoading, isError, refetch } = useQuery({ 
-    queryKey: ['centers'], 
-    queryFn: getCenters, 
-    staleTime: 5 * 60 * 1000 
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['centers'],
+    queryFn: getCenters,
+    staleTime: 5 * 60 * 1000
   })
 
   const filteredData = useMemo(() => {
     if (!data) return []
-    if (!search) return data
+    let res = data
+    if (scopeCenterId) {
+      res = res.filter((c: any) => c.center_id === scopeCenterId)
+    }
+    if (!search) return res
     const s = search.toLowerCase()
-    return data.filter((c:any) => 
-      c.simulated_city.toLowerCase().includes(s) || 
-      c.center_type.toLowerCase().includes(s) || 
+    return res.filter((c:any) =>
+      c.simulated_city.toLowerCase().includes(s) ||
+      c.center_type.toLowerCase().includes(s) ||
       `center ${c.center_id}`.includes(s) ||
       c.center_id.toString().includes(s)
     )
@@ -68,6 +74,19 @@ export function Centers() {
         </p>
       </header>
 
+            {scopeCenterId && (
+        <div className="mb-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--color-accent-subtle)] border border-[var(--color-accent)]/20 text-[12px] font-semibold text-[var(--color-accent)]">
+          <span>Active Global Scope: Center {scopeCenterId}</span>
+          <button
+            onClick={() => setScopeCenterId(null)}
+            className="hover:text-[var(--color-danger)] transition-colors p-0.5 rounded cursor-pointer"
+            title="Clear global center scope"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       <div className="mb-6 relative max-w-md sticky top-0 z-20">
         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
           <Search className="h-4 w-4 text-[var(--color-text-tertiary)]" />
@@ -87,7 +106,7 @@ export function Centers() {
       </div>
 
       <CentersSummary data={filteredData} totalCenters={data.length} />
-      
+
       <div className="mb-8">
         <CentersDistribution data={filteredData} />
       </div>

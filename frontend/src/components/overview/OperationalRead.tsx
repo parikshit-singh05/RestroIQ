@@ -27,7 +27,7 @@ export function OperationalRead({ summary }: Props) {
             key={i}
             className="flex items-start text-[13px] font-medium text-[var(--color-text-secondary)] leading-relaxed"
           >
-            <span className="text-[var(--color-accent)] mr-2.5 mt-0.5 opacity-70">•</span>
+            <span className="text-[var(--color-accent)] mr-2.5 mt-0.5 opacity-70">&bull;</span>
             <span>{obs}</span>
           </div>
         ))}

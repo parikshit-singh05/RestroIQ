@@ -18,9 +18,9 @@
 
 ---
 
-## 📖 About The Project
+## About The Project
 
-RestroIQ is an end-to-end intelligence platform built to explore food-demand forecasting, preparation planning, and operational analytics through an interactive dashboard. 
+RestroIQ is an end-to-end intelligence platform built to explore food-demand forecasting, preparation planning, and operational analytics through an interactive dashboard.
 
 The primary objective of RestroIQ is to translate historical demand data into actionable future estimates. By combining modern machine learning techniques with a premium, analytical user interface, it provides detailed forecast trajectories, configurable preparation scenarios, and deep multi-dimensional analytics.
 
@@ -29,47 +29,47 @@ The primary objective of RestroIQ is to translate historical demand data into ac
 ---
 
 
-## 📸 Dashboard Previews
+## Dashboard Previews
 
 <div align="center">
   <img src="docs/media/Overview.png" width="85%" alt="Overview Dashboard" />
   <br/><i>Overview: High-level demand forecasts and operational summaries</i><br/><br/>
-  
+
   <img src="docs/media/Forecasts.png" width="85%" alt="Forecasts Dashboard" />
   <br/><i>Forecasts: Future demand projections with extensive filtering</i><br/><br/>
-  
+
   <img src="docs/media/Inventory.png" width="85%" alt="Inventory Dashboard" />
   <br/><i>Inventory: Configurable preparation-buffer scenarios</i><br/><br/>
-  
+
   <img src="docs/media/Analytics.png" width="85%" alt="Analytics Dashboard" />
   <br/><i>Analytics: Historical trends and feature importance distributions</i>
 </div>
 
 
-## ✨ Core Modules & Features
+## Core Modules & Features
 
-- **📊 Overview**  
+- **📊 Overview**
   High-level demand forecasts and operational summaries displaying predicted orders, peak weeks, and top-performing segments.
 
-- **🔮 Forecasts**  
+- **🔮 Forecasts**
   Explore future demand projections across fulfillment centers, meal categories, and cuisines. Features extensive filtering, searching, and sorting capabilities.
 
-- **📦 Inventory & Preparation Planning**  
-  Configurable preparation-buffer scenarios (0%, 10%, 15%, 20%) to visualize planning allowances based on predicted demand.  
+- **📦 Inventory & Preparation Planning**
+  Configurable preparation-buffer scenarios (0%, 10%, 15%, 20%) to visualize planning allowances based on predicted demand.
   *Note: This module focuses strictly on forward-looking preparation planning; it is not a live inventory-balance tracking system.*
 
-- **📈 Analytics**  
+- **📈 Analytics**
   Deep dive into historical demand trends, order distributions, and promotion-associated comparisons. Includes model feature importance visualizations.
 
-- **🏬 Centers**  
+- **🏬 Centers**
   Center-level exploration allowing users to isolate demand predictions and historical performance by city, region, and center type.
 
-- **🍽️ Meals**  
+- **🍽️ Meals**
   Granular analysis at the meal level, grouping data by category and cuisine, equipped with an interactive 10-week forecast explorer.
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 RestroIQ utilizes a clear separation of concerns, connecting a reactive Vite/React frontend to a fast, Python-based API that serves processed analytical data and model outputs.
 
@@ -107,9 +107,9 @@ graph LR
 
 ---
 
-## ⚠️ Dataset & Methodology Transparency
+## Dataset & Methodology Transparency
 
-The project utilizes the [Kaggle Food Demand Forecasting dataset](https://www.kaggle.com/datasets/kannanaikkal/food-demand-forecasting). 
+The project utilizes the [Kaggle Food Demand Forecasting dataset](https://www.kaggle.com/datasets/kannanaikkal/food-demand-forecasting).
 
 **Important Context & Limitations:**
 - **Source Nature:** The dataset models historical food demand at fulfillment centers. It is *not* representing real-time restaurant POS transaction data.
@@ -120,7 +120,7 @@ The project utilizes the [Kaggle Food Demand Forecasting dataset](https://www.ka
 
 ---
 
-## 🚀 Installation & Local Setup
+## Installation & Local Setup
 
 ### Prerequisites
 - **Git** & **Git LFS** (Required to clone large datasets and `.pkl` artifacts).
@@ -175,7 +175,7 @@ npm run preview
 
 ---
 
-## 🔌 API Documentation
+## API Documentation
 
 The backend exposes several read-only endpoints prefixed with `/api/v1` that power the dashboard:
 
@@ -192,7 +192,7 @@ The backend exposes several read-only endpoints prefixed with `/api/v1` that pow
 
 ---
 
-## 👥 Contributors
+## Contributors
 
 - **Parikshit Singh** — [GitHub Profile](https://github.com/parikshit-singh05)
 - **Rasraj Suri** — [GitHub Profile](https://github.com/Rasraj177)

@@ -3,7 +3,7 @@
 export function AnalyticsModel({ model }: { model: any[] }) {
   const features = (model || []).slice(0, 7)
   const maxImp = features.length > 0 ? Math.max(...features.map((f: any) => f.imp)) : 1
-  
+
   return (
     <div className="border border-[var(--color-border)] rounded-xl bg-[var(--color-surface-alt)] p-6 shadow-sm flex flex-col h-full" aria-label="Model Signal">
       <div className="flex items-start justify-between mb-6 pb-4 border-b border-[var(--color-border-subtle)]">
@@ -16,7 +16,7 @@ export function AnalyticsModel({ model }: { model: any[] }) {
           <div className="text-[12px] font-bold text-[var(--color-text)]">Random Forest</div>
         </div>
       </div>
-      
+
       <div className="space-y-4 mb-6">
         {features.length === 0 ? <div className="text-[12px] text-[var(--color-text-tertiary)] italic">Model metadata unavailable.</div> : features.map(f => (
           <div key={f.name} className="relative group">
@@ -30,11 +30,11 @@ export function AnalyticsModel({ model }: { model: any[] }) {
           </div>
         ))}
       </div>
-      
+
       <div className="mt-auto pt-4 border-t border-[var(--color-border-subtle)] flex items-start space-x-2.5">
         <Activity className="w-4 h-4 text-[var(--color-text-tertiary)] mt-0.5 flex-shrink-0" />
         <p className="text-[11px] font-medium text-[var(--color-text-secondary)] leading-relaxed">
-          Feature importance indicates how useful a variable was during recursive walk-forward validation (Weeks 136â€“145); it does not establish causation.
+          Feature importance indicates how useful a variable was during recursive walk-forward validation (Weeks 136 - 145); it does not establish causation.
         </p>
       </div>
     </div>

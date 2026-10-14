@@ -24,6 +24,8 @@ export interface InventoryRecommendation {
   potential_surplus_10pct: number
   potential_surplus_15pct: number
   potential_surplus_20pct: number
+  category?: string
+  simulated_city?: string
 }
 
 export interface CenterInfo {
@@ -57,23 +59,25 @@ export interface DetailedForecast {
   checkout_price: number
   predicted_orders: number
 }
+
 export interface CenterAnalysis {
-  trend?: any[];
-  center_id: number;
-  simulated_city: string;
-  state: string;
-  center_type: string;
-  op_area: number;
-  latitude: number;
-  longitude: number;
-  predicted_orders: number;
-  peak_week: number;
-  share_of_network: number;
-  average_weekly_orders: number;
-  weekly_trajectory: { week: number; predicted_orders: number }[];
-  historical_trajectory: { week: number; num_orders: number }[];
-  top_categories: { category: string; predicted_orders: number }[];
-  top_meals: { meal_id: number; category: string; cuisine: string; predicted_orders: number }[];
+  trend?: any[]
+  center_id: number
+  simulated_city: string
+  state: string
+  center_type: string
+  op_area: number
+  latitude: number
+  longitude: number
+  predicted_orders: number
+  peak_week: number
+  wow_increase?: number
+  share_of_network: number
+  average_weekly_orders: number
+  weekly_trajectory: { week: number; predicted_orders: number }[]
+  historical_trajectory: { week: number; num_orders: number }[]
+  top_categories: { category: string; predicted_orders: number }[]
+  top_meals: { meal_id: number; category: string; cuisine: string; predicted_orders: number }[]
 }
 
 export interface CenterContribution {
@@ -84,7 +88,7 @@ export interface CenterContribution {
 }
 
 export interface MealAnalysis {
-  trend?: any[];
+  trend?: any[]
   meal_id: number
   category: string
   cuisine: string
@@ -93,8 +97,7 @@ export interface MealAnalysis {
   share_of_network: number
   average_weekly_orders: number
   peak_week: number
-  weekly_trajectory: { week: number, predicted_orders: number }[]
-  historical_trajectory: { week: number, num_orders: number }[]
+  weekly_trajectory: { week: number; predicted_orders: number }[]
+  historical_trajectory: { week: number; num_orders: number }[]
   center_contributions: CenterContribution[]
 }
-

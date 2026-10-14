@@ -26,9 +26,11 @@ export function NeedsAttention({ centers }: { centers: any[] }) {
             <div className="flex items-center space-x-3">
               <div className="flex flex-col items-end">
                 <span className="text-[13px] font-bold tabular-nums text-[var(--color-danger)]">
-                  +{c.wow_increase.toFixed(0)}%
+                  {typeof c.wow_increase === 'number'
+                    ? (c.wow_increase > 0 ? `+${c.wow_increase.toFixed(1)}%` : `${c.wow_increase.toFixed(1)}%`)
+                    : 'N/A'}
                 </span>
-                <span className="text-[10px] font-medium text-[var(--color-text-tertiary)] uppercase">WoW Risk</span>
+                <span className="text-[10px] font-medium text-[var(--color-text-tertiary)] uppercase">WoW Surge</span>
               </div>
               <ArrowRight className="w-4 h-4 text-[var(--color-border)] group-hover:text-[var(--color-accent)] transition-colors" />
             </div>
@@ -38,4 +40,3 @@ export function NeedsAttention({ centers }: { centers: any[] }) {
     </section>
   )
 }
-

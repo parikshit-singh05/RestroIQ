@@ -34,7 +34,7 @@ export function SecondaryContext() {
               <span className="text-[12px] font-bold text-[var(--color-text-tertiary)] uppercase">RMSLE</span>
             </div>
             <p className="text-[13px] font-medium text-[var(--color-text-secondary)] leading-relaxed">
-              Finalized Random Forest (log1p target) model. Evaluated using strict recursive walk-forward validation across Weeks 136 – 145.
+              Finalized Random Forest (log1p target) model. Evaluated using strict recursive walk-forward validation across Weeks 136 - 145.
             </p>
           </div>
         </div>

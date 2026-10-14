@@ -16,7 +16,7 @@ export function MealDetail() {
   const analysisQuery = useQuery({ queryKey: ['meals_analysis'], queryFn: () => getMealsAnalysis(), staleTime: 5 * 60 * 1000 })
   const forecastQuery = useQuery({
     queryKey: ['forecast_meal', id],
-    queryFn: () => getDetailedForecasts(undefined, 50000),
+    queryFn: () => getDetailedForecasts({ meal_id: Number(id), limit: 5000 }),
     staleTime: 5 * 60 * 1000
   })
 

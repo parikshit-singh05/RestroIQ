@@ -1,4 +1,5 @@
-﻿import { useState, useMemo } from 'react'
+﻿import { useState, useMemo, useEffect } from 'react'
+import { useAppContext } from '../context/AppContext'
 import { useQuery } from '@tanstack/react-query'
 import { getDetailedForecasts } from '../lib/api'
 import { getDistinct } from '../lib/computations'
@@ -11,19 +12,27 @@ import { CategoryBreakdown } from '../components/forecasts/CategoryBreakdown'
 import { AlertCircle, RefreshCw } from 'lucide-react'
 
 export function Forecasts() {
+  const { scopeCenterId } = useAppContext()
+
   const [filters, setFilters] = useState<FilterState>({
     week: '',
     city: '',
-    centerId: '',
+    centerId: scopeCenterId ? String(scopeCenterId) : '',
     category: '',
     cuisine: '',
     search: ''
   })
 
-  const { data, isLoading, isError, refetch } = useQuery({ 
-    queryKey: ['forecast_detail_all'], 
-    queryFn: () => getDetailedForecasts(undefined, 50000), 
-    staleTime: 5 * 60 * 1000 
+  useEffect(() => {
+    if (scopeCenterId) {
+      setFilters(f => ({ ...f, centerId: String(scopeCenterId) }))
+    }
+  }, [scopeCenterId])
+
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['forecast_detail_all'],
+    queryFn: () => getDetailedForecasts(undefined, 50000),
+    staleTime: 5 * 60 * 1000
   })
 
   const distinctWeeks = useMemo(() => getDistinct(data || [], 'week'), [data])
@@ -86,8 +95,8 @@ export function Forecasts() {
         </p>
       </header>
 
-      <ForecastFilters 
-        filters={filters} 
+      <ForecastFilters
+        filters={filters}
         setFilters={setFilters}
         distinctWeeks={distinctWeeks}
         distinctCities={distinctCities}

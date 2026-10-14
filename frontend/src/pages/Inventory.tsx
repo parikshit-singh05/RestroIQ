@@ -1,7 +1,7 @@
-import { useState, useMemo } from 'react'
+﻿import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { getDetailedForecasts } from '../lib/api'
-import { getDistinct } from '../lib/computations'
+import { getInventory, getCenters, getMeals } from '../lib/api'
+import { useAppContext } from '../context/AppContext'
 import { InventoryFilters, type InvFilterState } from '../components/inventory/InventoryFilters'
 import { InventoryPriorities } from '../components/inventory/InventoryPriorities'
 import { InventoryScenarios } from '../components/inventory/InventoryScenarios'
@@ -11,31 +11,51 @@ import { InventorySkeleton } from '../components/inventory/InventorySkeleton'
 import { AlertCircle, RefreshCw } from 'lucide-react'
 
 export function Inventory() {
+  const { scopeCenterId } = useAppContext()
+
   const [filters, setFilters] = useState<InvFilterState>({
     week: '146',
     category: '',
-    centerId: ''
+    centerId: scopeCenterId ? String(scopeCenterId) : ''
   })
 
-  const { data, isLoading, isError, refetch } = useQuery({ 
-    queryKey: ['forecast_detail_inventory'], 
-    queryFn: () => getDetailedForecasts(undefined, 50000), 
-    staleTime: 5 * 60 * 1000 
+  // Synchronize global scope if changed
+  useEffect(() => {
+    if (scopeCenterId) {
+      setFilters(f => ({ ...f, centerId: String(scopeCenterId) }))
+    }
+  }, [scopeCenterId])
+
+  // Efficient dedicated inventory endpoint: fetch only the active planning week (3,240 rows instead of 32,573 rows)
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['inventory', filters.week],
+    queryFn: () => getInventory({ week: Number(filters.week), limit: 5000 }),
+    staleTime: 5 * 60 * 1000
   })
 
-  const distinctWeeks = useMemo(() => getDistinct(data || [], 'week'), [data])
-  const distinctCategories = useMemo(() => getDistinct(data || [], 'category'), [data])
-  const distinctCenters = useMemo(() => getDistinct(data || [], 'center_id'), [data])
+  const centersQuery = useQuery({ queryKey: ['centers'], queryFn: getCenters, staleTime: Infinity })
+  const mealsQuery = useQuery({ queryKey: ['meals'], queryFn: getMeals, staleTime: Infinity })
+
+  const distinctWeeks = useMemo(() => ['146', '147', '148', '149', '150', '151', '152', '153', '154', '155'], [])
+
+  const distinctCategories = useMemo(() => {
+    if (!mealsQuery.data) return []
+    return Array.from(new Set(mealsQuery.data.map(m => m.category))).filter(Boolean).sort()
+  }, [mealsQuery.data])
+
+  const distinctCenters = useMemo(() => {
+    if (!centersQuery.data) return []
+    return centersQuery.data.map(c => String(c.center_id)).sort((a, b) => Number(a) - Number(b))
+  }, [centersQuery.data])
 
   const filteredData = useMemo(() => {
     if (!data) return []
     return data.filter(d => {
-      if (filters.week && String(d.week) !== filters.week) return false
       if (filters.category && d.category !== filters.category) return false
       if (filters.centerId && String(d.center_id) !== filters.centerId) return false
       return true
     })
-  }, [data, filters])
+  }, [data, filters.category, filters.centerId])
 
   if (isLoading) return <InventorySkeleton />
 
@@ -68,8 +88,8 @@ export function Inventory() {
         </p>
       </header>
 
-      <InventoryFilters 
-        filters={filters} 
+      <InventoryFilters
+        filters={filters}
         setFilters={setFilters}
         distinctWeeks={distinctWeeks}
         distinctCategories={distinctCategories}

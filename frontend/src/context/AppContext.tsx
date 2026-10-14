@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
+﻿import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
 
 type BufferValue = 0 | 10 | 15 | 20
 type ThemeValue = 'light' | 'dark'
@@ -8,18 +8,23 @@ interface AppContextType {
   setBuffer: (b: BufferValue) => void
   theme: ThemeValue
   setTheme: (t: ThemeValue) => void
+  scopeCenterId: number | null
+  setScopeCenterId: (id: number | null) => void
 }
 
 const AppContext = createContext<AppContextType>({
   buffer: 10,
   setBuffer: () => {},
   theme: 'light',
-  setTheme: () => {}
+  setTheme: () => {},
+  scopeCenterId: null,
+  setScopeCenterId: () => {}
 })
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [buffer, setBuffer] = useState<BufferValue>(10)
-  
+  const [scopeCenterId, setScopeCenterId] = useState<number | null>(null)
+
   const [theme, setThemeState] = useState<ThemeValue>(() => {
     const saved = localStorage.getItem('restroiq_theme') as ThemeValue
     if (saved === 'light' || saved === 'dark') return saved
@@ -39,7 +44,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setTheme = (t: ThemeValue) => setThemeState(t)
 
   return (
-    <AppContext.Provider value={{ buffer, setBuffer, theme, setTheme }}>
+    <AppContext.Provider value={{
+      buffer, setBuffer,
+      theme, setTheme,
+      scopeCenterId, setScopeCenterId
+    }}>
       {children}
     </AppContext.Provider>
   )

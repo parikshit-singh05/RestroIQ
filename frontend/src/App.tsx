@@ -1,18 +1,29 @@
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
-import { useEffect } from 'react'
+﻿import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { useEffect, lazy, Suspense } from 'react'
 import { Shell } from './components/layout/Shell'
-import { Overview } from './pages/Overview'
-import { Forecasts } from './pages/Forecasts'
-import { Inventory } from './pages/Inventory'
-import { Analytics } from './pages/Analytics'
-import { Centers } from './pages/Centers'
-import { CenterDetail } from './pages/CenterDetail'
-import { Meals } from './pages/Meals'
-import { MealDetail } from './pages/MealDetail'
+
+// Route-level code-splitting for performance and reduced initial bundle size
+const Overview = lazy(() => import('./pages/Overview').then(m => ({ default: m.Overview })))
+const Forecasts = lazy(() => import('./pages/Forecasts').then(m => ({ default: m.Forecasts })))
+const Inventory = lazy(() => import('./pages/Inventory').then(m => ({ default: m.Inventory })))
+const Analytics = lazy(() => import('./pages/Analytics').then(m => ({ default: m.Analytics })))
+const Centers = lazy(() => import('./pages/Centers').then(m => ({ default: m.Centers })))
+const CenterDetail = lazy(() => import('./pages/CenterDetail').then(m => ({ default: m.CenterDetail })))
+const Meals = lazy(() => import('./pages/Meals').then(m => ({ default: m.Meals })))
+const MealDetail = lazy(() => import('./pages/MealDetail').then(m => ({ default: m.MealDetail })))
+
+function PageFallback() {
+  return (
+    <div className="w-full py-20 flex flex-col items-center justify-center text-[13px] font-medium text-[var(--color-text-tertiary)] animate-pulse">
+      <div className="w-8 h-8 rounded-full border-2 border-[var(--color-accent)] border-t-transparent animate-spin mb-3" />
+      <span>Loading module...</span>
+    </div>
+  )
+}
 
 function App() {
   const location = useLocation()
-  
+
   useEffect(() => {
     const routeTitles: Record<string, string> = {
       '/overview': 'Overview',
@@ -22,7 +33,7 @@ function App() {
       '/centers': 'Centers',
       '/meals': 'Meals'
     }
-    
+
     let pageTitle = 'RestroIQ'
     if (location.pathname.startsWith('/centers/')) {
       pageTitle = 'Center Detail'
@@ -31,7 +42,7 @@ function App() {
     } else {
       pageTitle = routeTitles[location.pathname] || 'Demand Intelligence'
     }
-    
+
     document.title = `RestroIQ | ${pageTitle}`
   }, [location])
 
@@ -39,14 +50,46 @@ function App() {
     <Routes>
       <Route path="/" element={<Shell />}>
         <Route index element={<Navigate to="/overview" replace />} />
-        <Route path="overview" element={<Overview />} />
-        <Route path="forecasts" element={<Forecasts />} />
-        <Route path="inventory" element={<Inventory />} />
-        <Route path="analytics" element={<Analytics />} />
-        <Route path="centers" element={<Centers />} />
-        <Route path="centers/:id" element={<CenterDetail />} />
-        <Route path="meals" element={<Meals />} />
-        <Route path="meals/:id" element={<MealDetail />} />
+        <Route path="overview" element={
+          <Suspense fallback={<PageFallback />}>
+            <Overview />
+          </Suspense>
+        } />
+        <Route path="forecasts" element={
+          <Suspense fallback={<PageFallback />}>
+            <Forecasts />
+          </Suspense>
+        } />
+        <Route path="inventory" element={
+          <Suspense fallback={<PageFallback />}>
+            <Inventory />
+          </Suspense>
+        } />
+        <Route path="analytics" element={
+          <Suspense fallback={<PageFallback />}>
+            <Analytics />
+          </Suspense>
+        } />
+        <Route path="centers" element={
+          <Suspense fallback={<PageFallback />}>
+            <Centers />
+          </Suspense>
+        } />
+        <Route path="centers/:id" element={
+          <Suspense fallback={<PageFallback />}>
+            <CenterDetail />
+          </Suspense>
+        } />
+        <Route path="meals" element={
+          <Suspense fallback={<PageFallback />}>
+            <Meals />
+          </Suspense>
+        } />
+        <Route path="meals/:id" element={
+          <Suspense fallback={<PageFallback />}>
+            <MealDetail />
+          </Suspense>
+        } />
       </Route>
     </Routes>
   )

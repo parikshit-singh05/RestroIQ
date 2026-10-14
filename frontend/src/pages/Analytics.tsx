@@ -1,7 +1,7 @@
-﻿import { useState, useMemo } from 'react'
+﻿import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { getAnalytics as getAnalyticsData } from '../lib/api'
-import { getDistinct } from '../lib/computations'
+import { getAnalytics as getAnalyticsData, getCenters, getMeals } from '../lib/api'
+import { useAppContext } from '../context/AppContext'
 import { AnalyticsFilters, type AnalyticsFilterState } from '../components/analytics/AnalyticsFilters'
 import { AnalyticsTrend } from '../components/analytics/AnalyticsTrend'
 import { AnalyticsDistribution } from '../components/analytics/AnalyticsDistribution'
@@ -11,22 +11,57 @@ import { AnalyticsRead } from '../components/analytics/AnalyticsRead'
 import { AlertCircle, RefreshCw } from 'lucide-react'
 
 export function Analytics() {
+  const { scopeCenterId } = useAppContext()
+
   const [filters, setFilters] = useState<AnalyticsFilterState>({
     start_week: '1',
     end_week: '145',
     city: '',
-    centerId: '',
+    centerId: scopeCenterId ? String(scopeCenterId) : '',
     category: '',
     cuisine: ''
   })
 
-  const { data, isLoading, isError, refetch } = useQuery({ 
-    queryKey: ['analytics', filters], 
-    queryFn: () => getAnalyticsData(filters), 
-    staleTime: 5 * 60 * 1000 
+  // Synchronize global scope if changed
+  useEffect(() => {
+    if (scopeCenterId) {
+      setFilters(f => ({ ...f, centerId: String(scopeCenterId) }))
+    }
+  }, [scopeCenterId])
+
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['analytics', filters],
+    queryFn: () => getAnalyticsData(filters),
+    staleTime: 5 * 60 * 1000
   })
 
-  const distinctQuery = useQuery({ queryKey: ['analytics', {}], queryFn: () => getAnalyticsData({}), staleTime: Infinity })
+  const centersQuery = useQuery({ queryKey: ['centers'], queryFn: getCenters, staleTime: Infinity })
+  const mealsQuery = useQuery({ queryKey: ['meals'], queryFn: getMeals, staleTime: Infinity })
+
+  // Build real filter options from verified backend data
+  const distinctCities = useMemo(() => {
+    if (!centersQuery.data) return []
+    return Array.from(new Set(centersQuery.data.map(c => c.simulated_city))).filter(Boolean).sort()
+  }, [centersQuery.data])
+
+  const distinctCenters = useMemo(() => {
+    if (!centersQuery.data) return []
+    let list = centersQuery.data
+    if (filters.city) {
+      list = list.filter(c => c.simulated_city === filters.city)
+    }
+    return list.map(c => String(c.center_id)).sort((a, b) => Number(a) - Number(b))
+  }, [centersQuery.data, filters.city])
+
+  const distinctCategories = useMemo(() => {
+    if (!mealsQuery.data) return []
+    return Array.from(new Set(mealsQuery.data.map(m => m.category))).filter(Boolean).sort()
+  }, [mealsQuery.data])
+
+  const distinctCuisines = useMemo(() => {
+    if (!mealsQuery.data) return []
+    return Array.from(new Set(mealsQuery.data.map(m => m.cuisine))).filter(Boolean).sort()
+  }, [mealsQuery.data])
 
   if (isLoading || !data) {
     return (
@@ -59,15 +94,11 @@ export function Analytics() {
     )
   }
 
-  // Build filter options from unfiltered data if available
-  const baseData = distinctQuery.data?.raw_sample || []
-  const distinctCities = useMemo(() => getDistinct(baseData, 'simulated_city'), [baseData])
-  const distinctCenters = useMemo(() => {
-    const b = filters.city ? baseData.filter((d:any) => d.simulated_city === filters.city) : baseData
-    return getDistinct(b, 'center_id')
-  }, [baseData, filters.city])
-  const distinctCategories = useMemo(() => getDistinct(baseData, 'category'), [baseData])
-  const distinctCuisines = useMemo(() => getDistinct(baseData, 'cuisine'), [baseData])
+  const safeDist = data.distribution || { category: [], cuisine: [], center: [], city: [] }
+  const safePromo = data.promotion || {
+    emailer: { yes: 0, no: 0, yes_n: 0, no_n: 0 },
+    homepage: { yes: 0, no: 0, yes_n: 0, no_n: 0 }
+  }
 
   return (
     <div className="w-full pb-16 animate-in fade-in duration-500">
@@ -80,8 +111,8 @@ export function Analytics() {
         </p>
       </header>
 
-      <AnalyticsFilters 
-        filters={filters} 
+      <AnalyticsFilters
+        filters={filters}
         setFilters={setFilters}
         distinctCities={distinctCities}
         distinctCenters={distinctCenters}
@@ -89,19 +120,17 @@ export function Analytics() {
         distinctCuisines={distinctCuisines}
       />
 
-      <AnalyticsRead dist={data.distribution} promo={data.promotion} />
+      <AnalyticsRead dist={safeDist} promo={safePromo} />
 
-      <AnalyticsTrend data={data.trend} />
+      <AnalyticsTrend data={data.trend || []} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
-        <AnalyticsDistribution dist={data.distribution} />
+        <AnalyticsDistribution dist={safeDist} />
         <div className="flex flex-col space-y-6 lg:space-y-8">
-          <AnalyticsPromotions promo={data.promotion} />
+          <AnalyticsPromotions promo={safePromo} />
           <AnalyticsModel model={data.model || []} />
         </div>
       </div>
     </div>
   )
 }
-
-

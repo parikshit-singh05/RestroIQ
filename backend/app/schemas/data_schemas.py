@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+﻿from pydantic import BaseModel
 from typing import List, Optional, Any, Dict
 
 class HealthCheck(BaseModel):
@@ -23,6 +23,8 @@ class InventoryRecommendation(BaseModel):
     potential_surplus_10pct: float
     potential_surplus_15pct: float
     potential_surplus_20pct: float
+    category: Optional[str] = None
+    simulated_city: Optional[str] = None
 
 class CenterInfo(BaseModel):
     center_id: int
@@ -44,4 +46,3 @@ class HistorySummary(BaseModel):
     week: int
     total_orders: float
     average_orders: float
-

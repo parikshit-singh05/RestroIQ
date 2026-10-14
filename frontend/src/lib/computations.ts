@@ -1,5 +1,5 @@
-import type { ForecastSummary } from './types'
-import { formatCompact, formatPctChange } from './format'
+import type { ForecastSummary } from './types.ts'
+import { formatCompact, formatPctChange } from './format.ts'
 
 export interface PeakWeekInfo {
   week: number
@@ -102,7 +102,7 @@ export function generateObservations(
   observations.push(
     `Peak demand approaches in Week ${peak.week}, with ${formatCompact(peak.value)} orders expected.`
   )
-  
+
   if (wow.delta > 0) {
     observations.push(
       `Largest weekly increase: Week ${wow.fromWeek} to ${wow.toWeek} (${formatPctChange(wow.pctChange)}, +${formatCompact(Math.abs(wow.delta))} orders).`
