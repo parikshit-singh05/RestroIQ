@@ -85,7 +85,7 @@ export function ForecastTable({ data }: { data: any[] }) {
                   {d.cuisine}
                 </td>
                 <td className="py-3 px-4 text-[13px] font-medium tabular-nums text-[var(--color-text)] text-right">
-                  ${d.checkout_price.toFixed(2)}
+                  ₹{d.checkout_price.toFixed(2)}
                 </td>
                 <td className="py-3 px-4 text-[13px] font-bold tabular-nums text-[var(--color-text)] text-right">
                   {formatCompact(d.predicted_orders)}
