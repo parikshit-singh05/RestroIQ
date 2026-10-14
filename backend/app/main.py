@@ -12,10 +12,28 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
 
+# Build clean list of allowed origins, ensuring production Vercel URL and local dev are always present
+raw_origins = [o.strip() for o in settings.FRONTEND_URL.split(",") if o.strip()]
+default_origins = [
+    "https://restroiq.vercel.app",
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:8000",
+]
+allowed_origins = list(dict.fromkeys(raw_origins + default_origins))
+# Also normalize any with/without trailing slash
+for o in list(allowed_origins):
+    if o.endswith("/"):
+        allowed_origins.append(o.rstrip("/"))
+    else:
+        allowed_origins.append(f"{o}/")
+allowed_origins = list(dict.fromkeys(allowed_origins))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[origin.strip() for origin in settings.FRONTEND_URL.split(",")],
-    # Allow Vercel preview URLs via comma-separated string if needed
+    allow_origins=allowed_origins,
+    allow_origin_regex=r"^https:\/\/restroiq(-[a-z0-9-]+)?\.vercel\.app$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

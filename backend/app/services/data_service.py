@@ -23,14 +23,18 @@ class DataService:
             meta = self.detailed_df[['week', 'center_id', 'meal_id', 'category', 'simulated_city']].drop_duplicates()
             self.inventory_df = pd.merge(inv_raw, meta, on=['week', 'center_id', 'meal_id'], how='left')
 
-            # Load historical data for chart context
-            train_raw = pd.read_csv(os.path.join(settings.DATA_DIR, "raw", "train.csv"))
+            # Load historical data for chart context (only load required columns to minimize memory/time)
+            train_raw = pd.read_csv(
+                os.path.join(settings.DATA_DIR, "raw", "train.csv"),
+                usecols=['week', 'num_orders']
+            )
             recent_hist = train_raw[(train_raw['week'] >= 136) & (train_raw['week'] <= 145)]
             hist_grouped = recent_hist.groupby('week').agg(
                 total_orders=('num_orders', 'sum'),
                 average_orders=('num_orders', 'mean')
             ).reset_index()
             self.history_df = hist_grouped
+            del train_raw, recent_hist
 
             center_info = pd.read_csv(os.path.join(settings.EXTERNAL_DIR, "fulfilment_center_info.csv"))
             center_loc = pd.read_csv(os.path.join(settings.EXTERNAL_DIR, "center_location_mapping.csv"))
@@ -45,22 +49,20 @@ class DataService:
                     'emailer_for_promotion', 'homepage_featured', 'holiday_present',
                     'prev_avg_humidity', 'prev_total_precipitation', 'prev_avg_temperature', 'discount_percent']
             self.analytics_df = pd.read_csv(os.path.join(settings.PROCESSED_DIR, "restroiq_train_features_repaired.csv"), usecols=cols)
+            # Pre-filter recent historical weeks (136-145) for instant trajectory slicing in centers/meals analysis
+            self.recent_history_df = self.analytics_df[(self.analytics_df['week'] >= 136) & (self.analytics_df['week'] <= 145)].copy()
 
             import json
             with open(os.path.join(settings.PROCESSED_DIR, "feature_importances.json"), "r") as f:
                 self.feature_importances = json.load(f)
 
-            # In-memory caches for expensive operations
+            # In-memory caches for expensive operations (computed on-demand and memoized)
             self._cached_centers_analysis = None
             self._cached_meals_analysis_all = None
             self._analytics_cache = {}
             self._meals_analysis_cache = {}
 
-            # Precompute immutable analyses at startup
-            self._compute_centers_analysis()
-            self._compute_meals_analysis_all()
-
-            print("Data loaded and precomputed successfully into memory.")
+            print("Data loaded successfully into memory.")
         except Exception as e:
             print(f"Error loading data: {e}")
             raise e
@@ -238,7 +240,7 @@ class DataService:
         ).reset_index(name='top_meals')
 
         # 6. Historical trajectory (Weeks 136-145)
-        hist_df = self.analytics_df[(self.analytics_df['week'] >= 136) & (self.analytics_df['week'] <= 145)]
+        hist_df = self.recent_history_df
         hist_weekly = hist_df.groupby(['center_id', 'week'])['num_orders'].sum().reset_index()
         hist_traj = hist_weekly.groupby('center_id').apply(
             lambda x: x[['week', 'num_orders']].to_dict(orient='records')
@@ -302,7 +304,7 @@ class DataService:
                              category: str = None, cuisine: str = None):
         try:
             df_traj = self.detailed_df
-            hist = self.analytics_df[(self.analytics_df['week'] >= 136) & (self.analytics_df['week'] <= 145)]
+            hist = self.recent_history_df
 
             if city: df_traj = df_traj[df_traj['simulated_city'] == city]
             if center_id: df_traj = df_traj[df_traj['center_id'] == center_id]

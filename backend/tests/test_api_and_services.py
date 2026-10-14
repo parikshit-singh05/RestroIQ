@@ -138,5 +138,33 @@ class TestBackendServicesAndEndpoints(unittest.TestCase):
             self.assertTrue(len(m['center_contributions']) > 0)
 
 
+    def test_cors_configuration(self):
+        import asyncio
+        from app.main import app
+
+        async def run_cors_test():
+            messages = []
+            scope = {
+                'type': 'http', 'method': 'GET', 'path': '/api/v1/health',
+                'raw_path': b'/api/v1/health', 'query_string': b'',
+                'headers': [(b'host', b'localhost'), (b'origin', b'https://restroiq.vercel.app')],
+                'client': ('127.0.0.1', 12345), 'server': ('127.0.0.1', 8000),
+                'scheme': 'http', 'http_version': '1.1'
+            }
+            async def receive():
+                return {'type': 'http.request', 'body': b'', 'more_body': False}
+            async def send(message):
+                messages.append(message)
+            await app(scope, receive, send)
+            start_msg = [m for m in messages if m['type'] == 'http.response.start'][0]
+            headers = dict(start_msg.get('headers', []))
+            return start_msg.get('status'), headers
+
+        status, headers = asyncio.run(run_cors_test())
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get(b'access-control-allow-origin'), b'https://restroiq.vercel.app')
+        self.assertEqual(headers.get(b'access-control-allow-credentials'), b'true')
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -15,20 +15,30 @@ export const api = axios.create({
   timeout: 45000, // 45 seconds to accommodate Render free-tier cold starts
 })
 
-// Optional retry on network error or 503/504 cold-start response (max 1 retry)
+// Optional retry on network error or 502/503/504 cold-start response (up to 2 retries with backoff)
 api.interceptors.response.use(
   response => response,
   async error => {
-    const config = error.config
-    if (!config || config._hasRetried) {
+    const config = error.config as any
+    if (!config) {
       return Promise.reject(error)
     }
+    config._retryCount = config._retryCount || 0
+    const maxRetries = 2
+
     const status = error.response ? error.response.status : null
-    const isColdStart = status === 503 || status === 504 || error.code === 'ECONNABORTED' || !status
-    if (isColdStart) {
-      config._hasRetried = true
-      // Short delay before single wake-up retry
-      await new Promise(resolve => setTimeout(resolve, 2000))
+    const isColdStart =
+      status === 502 ||
+      status === 503 ||
+      status === 504 ||
+      error.code === 'ECONNABORTED' ||
+      error.message === 'Network Error' ||
+      !status // Catches browser CORS errors when edge proxy returns 502 without CORS headers
+
+    if (isColdStart && config._retryCount < maxRetries) {
+      config._retryCount += 1
+      const delay = config._retryCount === 1 ? 2500 : 5000
+      await new Promise(resolve => setTimeout(resolve, delay))
       return api(config)
     }
     return Promise.reject(error)
