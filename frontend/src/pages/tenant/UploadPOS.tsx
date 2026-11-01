@@ -25,7 +25,7 @@ interface ColumnSuggestion {
 }
 
 export function UploadPOS() {
-  const { currentRestaurant, branches, currentBranch, session } = useAuth()
+  const { currentRestaurant, branches, session } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -36,7 +36,7 @@ export function UploadPOS() {
   const [loadingPreview, setLoadingPreview] = useState(false)
   const [previewData, setPreviewData] = useState<any>(null)
   const [mapping, setMapping] = useState<Record<string, string>>({})
-  const [selectedBranchId, setSelectedBranchId] = useState<string>(currentBranch?.id || (branches[0]?.id || ''))
+  const [selectedBranchId, setSelectedBranchId] = useState<string>('')
   const [isDragging, setIsDragging] = useState(false)
   const [ingesting, setIngesting] = useState(false)
   const [ingestResult, setIngestResult] = useState<any>(null)
@@ -325,7 +325,7 @@ export function UploadPOS() {
                 </p>
               </div>
 
-              {/* Target Branch Override */}
+              {/* Target Branch Selection */}
               <div className="flex items-center gap-2">
                 <span className="text-[12px] font-medium text-[var(--color-text-secondary)]">Assign to Branch:</span>
                 <select
@@ -333,18 +333,19 @@ export function UploadPOS() {
                   onChange={(e) => setSelectedBranchId(e.target.value)}
                   className="bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-lg px-2.5 py-1 text-[12px] font-semibold text-[var(--color-text)] outline-none"
                 >
+                  <option value="">-- Select Target Outlet (Mandatory) --</option>
                   {branches.map((b) => (
-                    <option key={b.id} value={b.id}>{b.branch_name}</option>
+                    <option key={b.id} value={b.id}>{b.branch_name} ({b.branch_code})</option>
                   ))}
                 </select>
               </div>
             </div>
 
-            {/* Branch Ambiguity Safeguard */}
-            {branches.length > 1 && !mapping.branch_code && (
+            {/* Branch Confirmation Safeguard */}
+            {!mapping.branch_code && (
               <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-2.5 text-amber-400 text-[12px] font-semibold">
                 <AlertTriangle className="w-4 h-4 shrink-0" />
-                <span>Explicit Branch Selection Required: This file lacks a branch column. You must explicitly select the target outlet above. Silent assignment to the primary branch is prohibited.</span>
+                <span>Explicit Branch Confirmation Required: This file lacks a branch column. You must explicitly select and confirm the target outlet above before importing. Silent assignment to any branch (including single-branch restaurants) is prohibited.</span>
               </div>
             )}
 
@@ -458,7 +459,7 @@ export function UploadPOS() {
                   !mapping.order_date ||
                   !mapping.item_name ||
                   !mapping.quantity ||
-                  (branches.length > 1 && !mapping.branch_code && !selectedBranchId)
+                  (!mapping.branch_code && !selectedBranchId)
                 }
                 className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[13px] font-semibold transition-all shadow-md shadow-emerald-600/20 disabled:opacity-50 cursor-pointer"
               >

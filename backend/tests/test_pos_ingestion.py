@@ -92,6 +92,8 @@ class TestPosIngestionEngine(unittest.TestCase):
         )
         cls.restaurant_gamma_id = res_gamma.id
         # TenantService automatically creates 1 default branch ('MAIN') for Gamma
+        gamma_branches = tenant_service.list_branches(cls.restaurant_gamma_id)
+        cls.branch_gamma_id = gamma_branches[0].id
 
         # Setup Tenant Beta (Independent competitor)
         cls.user_beta = str(uuid.uuid4())
@@ -240,8 +242,8 @@ class TestPosIngestionEngine(unittest.TestCase):
         self.assertEqual(d2["duplicate_rows"], 3)
         self.assertEqual(d2["status"], "completed")
 
-    def test_06_branch_assignment_single_branch_unambiguous(self):
-        """Single-branch restaurant (Gamma) with file lacking branch column maps unambiguously without error."""
+    def test_06_branch_assignment_single_branch_requires_explicit_confirmation(self):
+        """Single-branch restaurant (Gamma) requires explicit branch confirmation when branch column is absent."""
         csv_content = (
             "Order_Date,Item,Units,Total\n"
             "2026-08-01,Espresso,2,240\n"
@@ -255,15 +257,25 @@ class TestPosIngestionEngine(unittest.TestCase):
             "net_sales": "Total"
         })
 
-        # Single-branch: succeeds without specifying branch_id because there is only 1 branch
-        res = self.client.post(
+        # 1. Single-branch without explicit confirmation: MUST BE REJECTED to prevent silent assignment
+        res_rejected = self.client.post(
             f"/api/v1/tenant/restaurants/{self.restaurant_gamma_id}/uploads/commit",
             headers={"Authorization": f"Bearer {self.jwt_gamma}"},
             files={"file": ("single_branch.csv", io.BytesIO(csv_content), "text/csv")},
             data={"mapping": mapping_json}
         )
-        self.assertEqual(res.status_code, 200)
-        data = res.json()
+        self.assertEqual(res_rejected.status_code, 400)
+        self.assertIn("Explicit branch confirmation required", res_rejected.json()["detail"])
+
+        # 2. With explicit branch confirmation: succeeds cleanly
+        res_confirmed = self.client.post(
+            f"/api/v1/tenant/restaurants/{self.restaurant_gamma_id}/uploads/commit",
+            headers={"Authorization": f"Bearer {self.jwt_gamma}"},
+            files={"file": ("single_branch.csv", io.BytesIO(csv_content), "text/csv")},
+            data={"mapping": mapping_json, "branch_id": self.branch_gamma_id}
+        )
+        self.assertEqual(res_confirmed.status_code, 200)
+        data = res_confirmed.json()
         self.assertEqual(data["inserted_rows"], 2)
         self.assertEqual(data["status"], "completed")
 

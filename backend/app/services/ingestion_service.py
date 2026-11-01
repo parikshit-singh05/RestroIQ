@@ -434,33 +434,32 @@ class IngestionService:
 
         if registered_branches and len(registered_branches) > 0:
             if not branch_h or branch_h not in headers:
-                # File lacks branch column
-                if len(registered_branches) == 1:
-                    # Single branch: unambiguous
-                    branch_resolution_status = "unambiguous_single_branch"
+                # File lacks branch column.
+                # Require explicit user confirmation whenever branch information is absent,
+                # even for single-branch restaurants. Never silently assign uploaded records.
+                if not fallback_branch_id:
+                    branch_resolution_status = "confirmation_required"
+                    errors.append(ValidationAnomaly(
+                        row_index=0,
+                        field="branch_code",
+                        raw_value=None,
+                        message=(
+                            f"Branch information is absent from this file. "
+                            f"Explicit target branch confirmation is required for all imports "
+                            f"(including single-branch restaurants) to prevent silent record assignment."
+                        ),
+                        severity="error"
+                    ))
+                elif fallback_branch_id not in registered_branch_ids:
+                    errors.append(ValidationAnomaly(
+                        row_index=0,
+                        field="branch_code",
+                        raw_value=fallback_branch_id,
+                        message=f"Selected fallback branch '{fallback_branch_id}' does not belong to this restaurant.",
+                        severity="error"
+                    ))
                 else:
-                    # Multi-branch: SILENT ASSIGNMENT IS FORBIDDEN
-                    if not fallback_branch_id:
-                        branch_resolution_status = "ambiguous_selection_required"
-                        errors.append(ValidationAnomaly(
-                            row_index=0,
-                            field="branch_code",
-                            raw_value=None,
-                            message=(
-                                f"Ambiguous branch: Restaurant operates {len(registered_branches)} branches "
-                                f"({', '.join(registered_branch_names)}), but uploaded file lacks a branch column. "
-                                f"Explicit target branch confirmation is mandatory to prevent cross-branch contamination."
-                            ),
-                            severity="error"
-                        ))
-                    elif fallback_branch_id not in registered_branch_ids:
-                        errors.append(ValidationAnomaly(
-                            row_index=0,
-                            field="branch_code",
-                            raw_value=fallback_branch_id,
-                            message=f"Selected fallback branch '{fallback_branch_id}' does not belong to this restaurant.",
-                            severity="error"
-                        ))
+                    branch_resolution_status = "explicit_branch_confirmed"
 
         if errors:
             return ValidationSummaryResponse(
@@ -675,18 +674,17 @@ class IngestionService:
         effective_fallback_branch_id: Optional[str] = None
 
         if not branch_h or branch_h not in headers:
-            if len(branches) == 1:
-                effective_fallback_branch_id = branches[0].id
-            else:
-                if not fallback_branch_id:
-                    raise ValueError(
-                        f"Ambiguous branch assignment: Restaurant operates {len(branches)} branches. "
-                        f"You must explicitly specify which branch these orders belong to. "
-                        f"Silent assignment to primary branch is strictly prohibited."
-                    )
-                if fallback_branch_id not in [b.id for b in branches]:
-                    raise ValueError(f"Specified branch_id '{fallback_branch_id}' does not belong to this restaurant.")
-                effective_fallback_branch_id = fallback_branch_id
+            # Require explicit confirmation whenever branch information is absent,
+            # even for single-branch restaurants. Never silently assign uploaded records.
+            if not fallback_branch_id:
+                raise ValueError(
+                    f"Ambiguous branch assignment: Explicit branch confirmation required: File lacks branch information. "
+                    f"You must explicitly specify target branch_id. "
+                    f"Silent assignment to primary branch is strictly prohibited (explicit confirmation required even for single-branch restaurants)."
+                )
+            if fallback_branch_id not in [b.id for b in branches]:
+                raise ValueError(f"Specified branch_id '{fallback_branch_id}' does not belong to this restaurant.")
+            effective_fallback_branch_id = fallback_branch_id
         else:
             if fallback_branch_id:
                 if fallback_branch_id not in [b.id for b in branches]:
@@ -737,6 +735,7 @@ class IngestionService:
         }
 
         # Actual upload to private Supabase Storage bucket 'restaurant-uploads'
+        storage_uploaded = False
         if settings.SUPABASE_URL and settings.SUPABASE_KEY and user_jwt:
             try:
                 client = get_tenant_supabase_client(user_jwt)
@@ -746,6 +745,7 @@ class IngestionService:
                     file=file_content,
                     file_options={"content-type": content_type, "upsert": "false"}
                 )
+                storage_uploaded = True
             except Exception as storage_err:
                 print(f"[IngestionService] Supabase Storage upload note: {storage_err}")
 
@@ -756,6 +756,7 @@ class IngestionService:
             self._uploads[restaurant_id].append(upload_record)
 
             if settings.SUPABASE_URL and settings.SUPABASE_KEY and user_jwt:
+                db_persisted = False
                 try:
                     client = get_tenant_supabase_client(user_jwt)
                     client.table("data_uploads").insert(upload_record).execute()
@@ -774,8 +775,14 @@ class IngestionService:
                         "created_at": now_str
                     }
                     client.table("import_jobs").insert(import_job_failed).execute()
+                    db_persisted = True
                 except Exception:
                     pass
+                if storage_uploaded and not db_persisted:
+                    try:
+                        client.storage.from_("restaurant-uploads").remove([storage_path])
+                    except Exception:
+                        pass
 
             raise ValueError(
                 f"File validation failed with {validation.error_count} error(s). "
@@ -1087,10 +1094,13 @@ class IngestionService:
         ]
         deleted_orders = initial_order_count - len(self._orders.get(restaurant_id, []))
 
-        sample_upload_ids = [
-            u["id"] for u in self._uploads.get(restaurant_id, [])
+        sample_uploads = [
+            u for u in self._uploads.get(restaurant_id, [])
             if u.get("is_sample") or u.get("error_summary", {}).get("is_sample")
         ]
+        sample_upload_ids = [u["id"] for u in sample_uploads]
+        sample_storage_paths = [u["storage_path"] for u in sample_uploads if u.get("storage_path")]
+
         self._uploads[restaurant_id] = [
             u for u in self._uploads.get(restaurant_id, [])
             if u["id"] not in sample_upload_ids
@@ -1100,11 +1110,24 @@ class IngestionService:
         if settings.SUPABASE_URL and settings.SUPABASE_KEY and user_jwt:
             try:
                 client = get_tenant_supabase_client(user_jwt)
+                try:
+                    db_samples = client.table("data_uploads").select("id, storage_path").eq("restaurant_id", restaurant_id).eq("is_sample", True).execute()
+                    if db_samples.data:
+                        for row in db_samples.data:
+                            if row.get("id") and row["id"] not in sample_upload_ids:
+                                sample_upload_ids.append(row["id"])
+                            if row.get("storage_path") and row["storage_path"] not in sample_storage_paths:
+                                sample_storage_paths.append(row["storage_path"])
+                except Exception:
+                    pass
+
                 client.table("normalized_order_items").delete().eq("restaurant_id", restaurant_id).eq("promotion_tag", "synthetic_sample").execute()
                 for up_id in sample_upload_ids:
                     client.table("data_uploads").delete().eq("restaurant_id", restaurant_id).eq("id", up_id).execute()
+                if sample_storage_paths:
+                    client.storage.from_("restaurant-uploads").remove(sample_storage_paths)
             except Exception as e:
-                print(f"[IngestionService] Database sample purge note: {e}")
+                print(f"[IngestionService] Database/Storage sample purge note: {e}")
 
         return PurgeSampleResponse(
             restaurant_id=restaurant_id,

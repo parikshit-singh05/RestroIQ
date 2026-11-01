@@ -148,6 +148,7 @@ CREATE TABLE IF NOT EXISTS public.data_uploads (
     row_count INT,
     status VARCHAR(30) NOT NULL DEFAULT 'uploaded'
         CHECK (status IN ('uploaded', 'parsing', 'mapping_required', 'validating', 'ready_for_import', 'processing', 'completed', 'failed')),
+    is_sample BOOLEAN NOT NULL DEFAULT false,
     error_summary JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -155,6 +156,7 @@ CREATE TABLE IF NOT EXISTS public.data_uploads (
 
 CREATE INDEX IF NOT EXISTS idx_uploads_restaurant_id ON public.data_uploads(restaurant_id);
 CREATE INDEX IF NOT EXISTS idx_uploads_status ON public.data_uploads(status);
+CREATE INDEX IF NOT EXISTS idx_uploads_restaurant_is_sample ON public.data_uploads(restaurant_id, is_sample);
 
 -- ------------------------------------------------------------------------------
 -- 2. COLUMN_MAPPINGS TABLE
