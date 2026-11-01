@@ -112,6 +112,51 @@ def provision_or_confirm_user(admin_client, email: str, full_name: str, password
         return new_user.user.id
 
 
+def assert_rls_violation(exception: Exception, context: str):
+    """
+    Strictly verifies that an exception was caused by a PostgreSQL Row Level Security (RLS)
+    or insufficient-privilege policy violation (PostgreSQL 42501).
+    Any unexpected error (e.g., schema mismatch, connection error, syntax error) will fail the test.
+    """
+    err_str = str(exception).lower()
+    is_rls = (
+        "row-level security" in err_str or
+        "violates row-level security policy" in err_str or
+        "insufficient_privilege" in err_str or
+        "42501" in err_str
+    )
+    if not is_rls:
+        raise AssertionError(
+            f"SECURITY TEST FAILURE: Expected PostgreSQL RLS policy violation during {context}, "
+            f"but received unexpected error ({type(exception).__name__}): {exception}"
+        )
+
+
+def assert_storage_denied(exception: Exception, context: str):
+    """
+    Strictly verifies that an exception was caused by Supabase Storage RLS authorization
+    or access denial (400, 403, 404 with unauthorized / not_found).
+    Any unexpected error will fail the test.
+    """
+    err_str = str(exception).lower()
+    err_type = type(exception).__name__
+    is_storage_denial = (
+        "not found" in err_str or
+        "not_found" in err_str or
+        "unauthorized" in err_str or
+        "404" in err_str or
+        "403" in err_str or
+        "400" in err_str or
+        "permission" in err_str or
+        "row-level security" in err_str
+    )
+    if not is_storage_denial:
+        raise AssertionError(
+            f"SECURITY TEST FAILURE: Expected Storage RLS access denial during {context}, "
+            f"but received unexpected error ({err_type}): {exception}"
+        )
+
+
 def main():
     if not settings.SUPABASE_URL or not settings.SUPABASE_KEY:
         print("[ERROR] SUPABASE_URL and SUPABASE_KEY must be set in backend/.env.")
@@ -160,13 +205,9 @@ def main():
             print(f"  ✗ CRITICAL FAILURE: Table 'public.{tbl}' permitted unauthenticated insert (RLS INACTIVE)!")
             sys.exit(1)
         except Exception as e:
-            err_str = str(e).lower()
-            if "row-level security" in err_str or "violates row-level security policy" in err_str:
-                print(f"  ✓ Table 'public.{tbl}': RLS ACTIVE (PostgreSQL policy blocked unauthenticated write)")
-            else:
-                # Also verify table is queryable in schema cache
-                pub_client.table(tbl).select("*").limit(0).execute()
-                print(f"  ✓ Table 'public.{tbl}': RLS ACTIVE (Schema cache verified)")
+            # Strictly assert PostgreSQL RLS policy violation. Unexpected errors FAIL.
+            assert_rls_violation(e, f"unauthenticated write probe on table '{tbl}'")
+            print(f"  ✓ Table 'public.{tbl}': RLS ACTIVE (PostgreSQL policy blocked unauthenticated write: 42501)")
 
     print(f"  ==> All 14 application tables verified with active PostgreSQL Row Level Security.")
 
@@ -228,6 +269,20 @@ def main():
         primary_branch_id = branches.data[0]["id"]
         print(f"  ✓ Branch trigger verified: Primary branch '{branches.data[0]['branch_name']}' ({primary_branch_id}) initialized.")
 
+        # User Beta attempts to tamper/insert a branch into User Alpha's restaurant
+        try:
+            client_b.table("restaurant_branches").insert({
+                "restaurant_id": created_rest_id,
+                "branch_code": "TAMPER_BRANCH",
+                "branch_name": "Tampered Branch",
+                "city": "Mumbai"
+            }).execute()
+            print("  ✗ CRITICAL FAILURE: User Beta inserted branch into User Alpha's restaurant!")
+            sys.exit(1)
+        except Exception as e:
+            assert_rls_violation(e, "User Beta tamper-insert into restaurant_branches")
+            print("  ✓ Branch Write Isolation ENFORCED: User Beta insert blocked by PostgreSQL RLS (42501).")
+
         # B. OPERATIONAL DATA: DATA UPLOADS
         upload_res = client_a.table("data_uploads").insert({
             "restaurant_id": created_rest_id,
@@ -259,8 +314,9 @@ def main():
             }).execute()
             print("  ✗ CRITICAL FAILURE: User Beta inserted upload into User Alpha's restaurant!")
             sys.exit(1)
-        except Exception:
-            print("  ✓ Data Upload Write Isolation ENFORCED: User Beta insert blocked by RLS.")
+        except Exception as e:
+            assert_rls_violation(e, "User Beta tamper-insert into data_uploads")
+            print("  ✓ Data Upload Write Isolation ENFORCED: User Beta insert blocked by PostgreSQL RLS (42501).")
 
         # C. OPERATIONAL DATA: NORMALIZED ORDER ITEMS
         order_res = client_a.table("normalized_order_items").insert({
@@ -296,8 +352,9 @@ def main():
             }).execute()
             print("  ✗ CRITICAL FAILURE: User Beta inserted order into User Alpha's restaurant!")
             sys.exit(1)
-        except Exception:
-            print("  ✓ Order Items Write Isolation ENFORCED: User Beta insert blocked by RLS.")
+        except Exception as e:
+            assert_rls_violation(e, "User Beta tamper-insert into normalized_order_items")
+            print("  ✓ Order Items Write Isolation ENFORCED: User Beta insert blocked by PostgreSQL RLS (42501).")
 
         # D. OPERATIONAL DATA: FORECAST RUNS & RESULTS
         run_res = client_a.table("forecast_runs").insert({
@@ -347,8 +404,9 @@ def main():
             }).execute()
             print("  ✗ CRITICAL FAILURE: User Beta inserted forecast into User Alpha's restaurant!")
             sys.exit(1)
-        except Exception:
-            print("  ✓ Forecast Results Write Isolation ENFORCED: User Beta insert blocked by RLS.")
+        except Exception as e:
+            assert_rls_violation(e, "User Beta tamper-insert into forecast_results")
+            print("  ✓ Forecast Results Write Isolation ENFORCED: User Beta insert blocked by PostgreSQL RLS (42501).")
 
         # ---------------------------------------------------------------------
         # STEP 6: STORAGE PATH-BASED RLS ISOLATION
@@ -387,8 +445,9 @@ def main():
                 client_b.storage.from_("restaurant-uploads").download(test_storage_path)
                 print("  ✗ Storage RLS Failure: User Beta downloaded User Alpha's file!")
                 sys.exit(1)
-            except Exception:
-                print("  ✓ Storage RLS ENFORCED: User Beta direct download was blocked.")
+            except Exception as e:
+                assert_storage_denied(e, "User Beta direct file download")
+                print("  ✓ Storage RLS ENFORCED: User Beta direct download was blocked by Storage RLS.")
 
             # User Alpha cleans up their test file
             client_a.storage.from_("restaurant-uploads").remove([test_storage_path])
