@@ -73,4 +73,5 @@ class TenantContext(BaseModel):
     email: str
     restaurant_id: str
     role: str
+    raw_jwt: Optional[str] = None
 

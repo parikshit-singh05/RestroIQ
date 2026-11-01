@@ -82,7 +82,8 @@ def require_tenant_access(required_role: str = "analyst") -> Callable:
             user_id=user_id,
             email=user_email,
             restaurant_id=restaurant_id,
-            role=user_role
+            role=user_role,
+            raw_jwt=current_user["raw_jwt"]
         )
 
     return tenant_authorizer

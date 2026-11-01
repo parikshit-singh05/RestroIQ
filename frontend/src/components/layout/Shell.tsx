@@ -1,4 +1,4 @@
-﻿import { Outlet, NavLink } from 'react-router-dom'
+import { Outlet, NavLink, Link } from 'react-router-dom'
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 import { useQuery } from '@tanstack/react-query'
@@ -16,7 +16,9 @@ import {
   Sun,
   Moon,
   Menu,
-  X
+  X,
+  Sparkles,
+  ArrowRight
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
@@ -46,14 +48,28 @@ export function Shell() {
 
   const NavContent = () => (
     <>
-      <div className="px-6 mb-8 flex items-center space-x-3">
+      <div className="px-6 mb-6 flex items-center space-x-3">
         <div className="w-8 h-8 rounded-lg bg-[var(--color-accent)] flex items-center justify-center text-white shadow-sm font-heading font-black text-lg">
           R
         </div>
         <div>
           <span className="font-heading font-black text-xl tracking-tight text-[var(--color-text)]">RestroIQ</span>
-          <span className="block text-[10px] font-bold text-[var(--color-accent)] tracking-widest uppercase">Ops Intel</span>
+          <span className="block text-[10px] font-bold text-[var(--color-accent)] tracking-widest uppercase">Demo Workspace</span>
         </div>
+      </div>
+
+      {/* Mode switcher: Jump to My Restaurant SaaS Workspace */}
+      <div className="px-4 mb-4">
+        <Link
+          to="/app/overview"
+          className="flex items-center justify-between px-3 py-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/15 border border-emerald-500/20 text-emerald-400 text-[12px] font-semibold transition-all group"
+        >
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+            <span>My Restaurant SaaS</span>
+          </div>
+          <ArrowRight className="w-3 h-3 text-emerald-400 opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
+        </Link>
       </div>
 
       <div className="px-4 mb-2">
@@ -82,7 +98,7 @@ export function Shell() {
 
       <div className="mt-auto px-6 pt-6">
         <div className="p-3 rounded-lg bg-[var(--color-surface-alt)] border border-[var(--color-border-subtle)] text-[11px] text-[var(--color-text-secondary)]">
-          <div className="font-bold text-[var(--color-text)] mb-1">Production Pilot</div>
+          <div className="font-bold text-[var(--color-text)] mb-1">Kaggle Benchmark Pilot</div>
           <div>Forecasting Horizon: 10 Weeks (W146-W155). 77 Centers &bull; 51 Meals.</div>
         </div>
       </div>
@@ -185,6 +201,16 @@ export function Shell() {
             >
               {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
             </button>
+
+            {/* Switch to SaaS Workspace Button */}
+            <Link
+              to="/app/overview"
+              className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[12px] font-semibold shadow-sm shadow-emerald-600/20 transition-all cursor-pointer"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>My Restaurant Workspace</span>
+              <ArrowRight className="w-3 h-3 ml-0.5" />
+            </Link>
           </div>
         </header>
 
