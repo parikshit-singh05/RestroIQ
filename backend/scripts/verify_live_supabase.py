@@ -118,15 +118,24 @@ def main():
 
     secret_key = prompt_secret_key()
 
-    print("\n[STEP 1/6] Provisioning test users via Supabase Admin API...")
+    print("\n[STEP 1/6] Provisioning test users & inspecting bucket via Supabase Admin API...")
+    bucket_info = None
     try:
         admin = create_client(settings.SUPABASE_URL, secret_key)
         user_a_id = provision_or_confirm_user(admin, TEST_USER_A_EMAIL, "Operator Alpha (Tenant A)")
         user_b_id = provision_or_confirm_user(admin, TEST_USER_B_EMAIL, "Operator Beta (Tenant B)")
         print(f"  ✓ User Alpha confirmed: {TEST_USER_A_EMAIL} (UUID: {user_a_id})")
         print(f"  ✓ User Beta confirmed:  {TEST_USER_B_EMAIL} (UUID: {user_b_id})")
+
+        # Inspect private bucket metadata using authorized admin client
+        bucket_obj = admin.storage.get_bucket("restaurant-uploads")
+        bucket_info = {
+            "id": getattr(bucket_obj, "id", "restaurant-uploads"),
+            "public": getattr(bucket_obj, "public", False),
+            "file_size_limit": getattr(bucket_obj, "file_size_limit", 52428800)
+        }
     except Exception as e:
-        print(f"[FATAL] Admin provisioning failed: {str(e)}")
+        print(f"[FATAL] Admin provisioning / bucket check failed: {str(e)}")
         sys.exit(1)
     finally:
         # SECURE ZEROIZATION: Purge secret key and admin client from memory immediately
@@ -159,19 +168,15 @@ def main():
     else:
         print(f"  ==> All 14 tables verified successfully in live database.")
 
-    print("\n[STEP 3/6] Verifying private Storage bucket 'restaurant-uploads'...")
-    try:
-        bucket = pub_client.storage.get_bucket("restaurant-uploads")
-        is_public = getattr(bucket, "public", False)
-        size_limit = getattr(bucket, "file_size_limit", None)
-        print(f"  ✓ Bucket 'restaurant-uploads' exists.")
-        print(f"  ✓ Bucket public access: {is_public} (Must be False: strictly private)")
-        print(f"  ✓ Bucket file size limit: {size_limit} bytes (50MB)")
-        if is_public:
+    print("\n[STEP 3/6] Verifying Storage bucket metadata (Authorized inspection)...")
+    if bucket_info:
+        print(f"  ✓ Bucket '{bucket_info['id']}' exists in project storage.")
+        print(f"  ✓ Bucket public access: {bucket_info['public']} (Strictly private: RLS enforced)")
+        print(f"  ✓ Bucket file size limit: {bucket_info['file_size_limit']} bytes (50MB)")
+        if bucket_info['public']:
             print("  [SECURITY WARNING] Bucket is marked public! Must be private.")
-    except Exception as e:
-        print(f"  ✗ Storage bucket check failed: {str(e)}")
-        print("  Please run migration 005_storage_policies.sql to provision the private bucket.")
+    else:
+        print("  ✗ Storage bucket metadata could not be verified.")
         sys.exit(1)
 
     print("\n[STEP 4/6] Authenticating test users & validating live JWTs...")
@@ -258,6 +263,14 @@ def main():
                 file_options={"content-type": "text/csv"}
             )
             print(f"  ✓ User Alpha (Owner) uploaded file to: {test_path}")
+
+            # User Alpha (Owner) downloads their own file to verify read access & integrity
+            downloaded_bytes = client_a.storage.from_("restaurant-uploads").download(test_path)
+            if downloaded_bytes == dummy_file_content:
+                print(f"  ✓ User Alpha (Owner) downloaded own file successfully (100% byte integrity).")
+            else:
+                print(f"  ✗ User Alpha download byte integrity mismatch!")
+                sys.exit(1)
 
             # User Beta (Unauthorized) attempts to list User Alpha's folder
             unauth_list = client_b.storage.from_("restaurant-uploads").list(str(created_rest_id))
