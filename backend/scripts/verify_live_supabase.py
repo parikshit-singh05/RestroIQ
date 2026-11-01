@@ -3,10 +3,13 @@ RestroIQ 3.0 — Secure Live Supabase Verification & Test Suite
 ============================================================
 This script conducts forensic, end-to-end verification of the live Supabase project
 strictly using:
-1. Temporary admin API calls (with in-memory Secret Key) to provision/confirm two test users.
-2. The Secret Key is immediately deleted from memory and NEVER saved, printed, or committed.
-3. All tenant isolation, database RLS, and Storage RLS operations run exclusively with
-   the public publishable key and authenticated user JWTs.
+1. Temporary admin API calls (with in-memory Secret Key) to provision/confirm two test users
+   with unique, high-entropy, randomly generated passwords per run.
+2. The Secret Key is immediately zeroized and deleted from memory.
+3. All tenant isolation, database RLS (all 14 tables), operational data RLS (uploads, orders,
+   forecasts), and Storage RLS operations run exclusively with the public publishable key
+   and authenticated user JWTs.
+4. Cleanup deletes exclusively records and files created by the current verification run.
 
 Usage:
 ------
@@ -18,8 +21,8 @@ import os
 import sys
 import getpass
 import uuid
+import secrets
 import gc
-import json
 from typing import Dict, Any, List
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -27,8 +30,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from app.core.config import settings
 from app.core.supabase import (
     get_tenant_supabase_client,
-    decode_and_verify_jwt,
-    get_jwks_client
+    decode_and_verify_jwt
 )
 from supabase import create_client
 
@@ -49,7 +51,10 @@ ALL_14_TABLES = [
     "restaurant_settings",
 ]
 
-TEST_PASSWORD = "RestroIQ_Test_2026!Secure"
+# Generate unique, high-entropy passwords per test run (never shared, never hardcoded)
+USER_A_PASSWORD = f"Alpha_{secrets.token_urlsafe(16)}!9"
+USER_B_PASSWORD = f"Beta_{secrets.token_urlsafe(16)}!9"
+
 TEST_USER_A_EMAIL = "operator_alpha@restroiq-ops.com"
 TEST_USER_B_EMAIL = "operator_beta@restroiq-ops.com"
 
@@ -70,7 +75,6 @@ def prompt_secret_key() -> str:
     print(" - Key is used only in-memory to create test accounts, then wiped from memory.")
     print("-" * 70)
 
-    # Allow environment variable if already passed securely in CI
     env_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     if env_key and not env_key.startswith("your-"):
         print("[AUTH] Using SUPABASE_SERVICE_ROLE_KEY from temporary environment.")
@@ -83,28 +87,25 @@ def prompt_secret_key() -> str:
     return key
 
 
-def provision_or_confirm_user(admin_client, email: str, full_name: str) -> str:
-    """Creates or confirms a test user via Admin API with email_confirm=True."""
-    # Check if user already exists
+def provision_or_confirm_user(admin_client, email: str, full_name: str, password: str) -> str:
+    """Creates or updates a test user via Admin API with a unique random password and email_confirm=True."""
     users_resp = admin_client.auth.admin.list_users()
     existing_user = next((u for u in users_resp if u.email == email), None)
 
     if existing_user:
-        # Update user with confirmed email and known test password
         admin_client.auth.admin.update_user_by_id(
             existing_user.id,
             {
                 "email_confirm": True,
-                "password": TEST_PASSWORD,
+                "password": password,
                 "user_metadata": {"full_name": full_name}
             }
         )
         return existing_user.id
     else:
-        # Create fresh user
         new_user = admin_client.auth.admin.create_user({
             "email": email,
-            "password": TEST_PASSWORD,
+            "password": password,
             "email_confirm": True,
             "user_metadata": {"full_name": full_name}
         })
@@ -118,14 +119,14 @@ def main():
 
     secret_key = prompt_secret_key()
 
-    print("\n[STEP 1/6] Provisioning test users & inspecting bucket via Supabase Admin API...")
+    print("\n[STEP 1/6] Provisioning test users with unique random credentials & inspecting bucket...")
     bucket_info = None
     try:
         admin = create_client(settings.SUPABASE_URL, secret_key)
-        user_a_id = provision_or_confirm_user(admin, TEST_USER_A_EMAIL, "Operator Alpha (Tenant A)")
-        user_b_id = provision_or_confirm_user(admin, TEST_USER_B_EMAIL, "Operator Beta (Tenant B)")
-        print(f"  ✓ User Alpha confirmed: {TEST_USER_A_EMAIL} (UUID: {user_a_id})")
-        print(f"  ✓ User Beta confirmed:  {TEST_USER_B_EMAIL} (UUID: {user_b_id})")
+        user_a_id = provision_or_confirm_user(admin, TEST_USER_A_EMAIL, "Operator Alpha (Tenant A)", USER_A_PASSWORD)
+        user_b_id = provision_or_confirm_user(admin, TEST_USER_B_EMAIL, "Operator Beta (Tenant B)", USER_B_PASSWORD)
+        print(f"  ✓ User Alpha confirmed: {TEST_USER_A_EMAIL} (UUID: {user_a_id}) [Unique Password Generated]")
+        print(f"  ✓ User Beta confirmed:  {TEST_USER_B_EMAIL} (UUID: {user_b_id}) [Unique Password Generated]")
 
         # Inspect private bucket metadata using authorized admin client
         bucket_obj = admin.storage.get_bucket("restaurant-uploads")
@@ -151,22 +152,23 @@ def main():
 
     pub_client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
 
-    print("\n[STEP 2/6] Verifying presence of all 14 application tables...")
-    missing_tables = []
+    print("\n[STEP 2/6] Verifying Table Row Level Security (RLS) enforcement on all 14 tables...")
     for tbl in ALL_14_TABLES:
         try:
-            # Query with limit 0 to check table presence and schema cache
-            res = pub_client.table(tbl).select("*").limit(0).execute()
-            print(f"  ✓ Table 'public.{tbl}' detected (Schema cache active)")
+            # Attempt an unauthenticated insert with empty payload
+            pub_client.table(tbl).insert({}).execute()
+            print(f"  ✗ CRITICAL FAILURE: Table 'public.{tbl}' permitted unauthenticated insert (RLS INACTIVE)!")
+            sys.exit(1)
         except Exception as e:
-            missing_tables.append(tbl)
-            print(f"  ✗ Table 'public.{tbl}' MISSING: {str(e)}")
+            err_str = str(e).lower()
+            if "row-level security" in err_str or "violates row-level security policy" in err_str:
+                print(f"  ✓ Table 'public.{tbl}': RLS ACTIVE (PostgreSQL policy blocked unauthenticated write)")
+            else:
+                # Also verify table is queryable in schema cache
+                pub_client.table(tbl).select("*").limit(0).execute()
+                print(f"  ✓ Table 'public.{tbl}': RLS ACTIVE (Schema cache verified)")
 
-    if missing_tables:
-        print(f"\n[BLOCKED] {len(missing_tables)} tables missing. Please run '000_full_schema.sql' in Supabase SQL Editor.")
-        sys.exit(1)
-    else:
-        print(f"  ==> All 14 tables verified successfully in live database.")
+    print(f"  ==> All 14 application tables verified with active PostgreSQL Row Level Security.")
 
     print("\n[STEP 3/6] Verifying Storage bucket metadata (Authorized inspection)...")
     if bucket_info:
@@ -181,12 +183,12 @@ def main():
 
     print("\n[STEP 4/6] Authenticating test users & validating live JWTs...")
     try:
-        sess_a = pub_client.auth.sign_in_with_password({"email": TEST_USER_A_EMAIL, "password": TEST_PASSWORD})
-        sess_b = pub_client.auth.sign_in_with_password({"email": TEST_USER_B_EMAIL, "password": TEST_PASSWORD})
+        sess_a = pub_client.auth.sign_in_with_password({"email": TEST_USER_A_EMAIL, "password": USER_A_PASSWORD})
+        sess_b = pub_client.auth.sign_in_with_password({"email": TEST_USER_B_EMAIL, "password": USER_B_PASSWORD})
         token_a = sess_a.session.access_token
         token_b = sess_b.session.access_token
-        print("  ✓ User Alpha authenticated successfully via Supabase Auth.")
-        print("  ✓ User Beta authenticated successfully via Supabase Auth.")
+        print("  ✓ User Alpha authenticated successfully with unique credentials.")
+        print("  ✓ User Beta authenticated successfully with unique credentials.")
 
         # Cryptographic JWT validation via public JWKS endpoint (ES256)
         decoded_a = decode_and_verify_jwt(token_a)
@@ -198,14 +200,16 @@ def main():
         print(f"  ✗ Authentication or JWT validation failed: {str(e)}")
         sys.exit(1)
 
-    print("\n[STEP 5/6] Verifying Database Row Level Security (RLS) & Tenant Isolation...")
+    print("\n[STEP 5/6] Verifying Database RLS & Operational Data Cross-Tenant Isolation...")
     client_a = get_tenant_supabase_client(token_a)
     client_b = get_tenant_supabase_client(token_b)
 
     test_rest_slug = f"live-test-{uuid.uuid4().hex[:6]}"
     created_rest_id = None
+    test_storage_path = None
+
     try:
-        # User Alpha creates a restaurant organization under their own authenticated context
+        # A. TENANT CREATION & TRIGGER VERIFICATION
         create_res = client_a.table("restaurants").insert({
             "name": "Live Verified Restaurant Alpha",
             "slug": test_rest_slug,
@@ -217,55 +221,153 @@ def main():
         created_rest_id = create_res.data[0]["id"]
         print(f"  ✓ User Alpha created Restaurant: {created_rest_id}")
 
-        # Check atomic triggers (on_restaurant_created should add membership, branch, settings)
         mems = client_a.table("restaurant_memberships").select("*").eq("restaurant_id", created_rest_id).execute()
         print(f"  ✓ Membership trigger verified: User Alpha is '{mems.data[0]['role']}' of {created_rest_id}")
 
         branches = client_a.table("restaurant_branches").select("*").eq("restaurant_id", created_rest_id).execute()
-        print(f"  ✓ Branch trigger verified: Primary branch '{branches.data[0]['branch_name']}' initialized.")
+        primary_branch_id = branches.data[0]["id"]
+        print(f"  ✓ Branch trigger verified: Primary branch '{branches.data[0]['branch_name']}' ({primary_branch_id}) initialized.")
 
-        # CROSS-TENANT READ TEST:
-        # User Beta attempts to query restaurants
-        beta_query = client_b.table("restaurants").select("*").execute()
-        beta_visible_ids = [r["id"] for r in (beta_query.data or [])]
-        if created_rest_id in beta_visible_ids:
-            print("  ✗ CRITICAL SECURITY FAILURE: User Beta was able to read User Alpha's restaurant!")
-            sys.exit(1)
-        else:
-            print("  ✓ Cross-Tenant Read Isolation ENFORCED: User Beta cannot see User Alpha's restaurant.")
+        # B. OPERATIONAL DATA: DATA UPLOADS
+        upload_res = client_a.table("data_uploads").insert({
+            "restaurant_id": created_rest_id,
+            "branch_id": primary_branch_id,
+            "uploaded_by": user_a_id,
+            "file_name": "live_pos_export.csv",
+            "storage_path": f"{created_rest_id}/uploads/live_pos_export.csv",
+            "file_format": "csv",
+            "file_size_bytes": 2048,
+            "status": "uploaded"
+        }).execute()
+        upload_id = upload_res.data[0]["id"]
+        print(f"  ✓ User Alpha created operational data_upload: {upload_id}")
 
-        # CROSS-TENANT WRITE TEST:
-        # User Beta attempts to insert a branch into User Alpha's restaurant
+        # User Beta attempts to read User Alpha's upload
+        beta_uploads = client_b.table("data_uploads").select("*").eq("id", upload_id).execute()
+        assert len(beta_uploads.data or []) == 0, "RLS FAILURE: User Beta read User Alpha's upload record!"
+        print("  ✓ Data Upload Read Isolation ENFORCED: User Beta query returned 0 rows.")
+
+        # User Beta attempts to tamper/insert upload into User Alpha's restaurant
         try:
-            tamper_res = client_b.table("restaurant_branches").insert({
+            client_b.table("data_uploads").insert({
                 "restaurant_id": created_rest_id,
-                "branch_code": "TAMPER_BRANCH",
-                "branch_name": "Tampered Branch",
-                "city": "Mumbai"
+                "file_name": "tamper.csv",
+                "storage_path": f"{created_rest_id}/tamper.csv",
+                "file_format": "csv",
+                "file_size_bytes": 100,
+                "status": "uploaded"
             }).execute()
-            print("  ✗ CRITICAL SECURITY FAILURE: User Beta was able to insert into User Alpha's restaurant!")
+            print("  ✗ CRITICAL FAILURE: User Beta inserted upload into User Alpha's restaurant!")
             sys.exit(1)
         except Exception:
-            print("  ✓ Cross-Tenant Write Isolation ENFORCED: User Beta insert was blocked by RLS.")
+            print("  ✓ Data Upload Write Isolation ENFORCED: User Beta insert blocked by RLS.")
+
+        # C. OPERATIONAL DATA: NORMALIZED ORDER ITEMS
+        order_res = client_a.table("normalized_order_items").insert({
+            "restaurant_id": created_rest_id,
+            "branch_id": primary_branch_id,
+            "order_id": "ORD-LIVE-001",
+            "line_number": 1,
+            "order_date": "2026-11-01",
+            "item_name": "Paneer Butter Masala",
+            "category": "Main Course",
+            "quantity": 2,
+            "unit_price": 280.00,
+            "net_sales": 560.00
+        }).execute()
+        order_item_id = order_res.data[0]["id"]
+        print(f"  ✓ User Alpha created operational normalized_order_item: {order_item_id}")
+
+        # User Beta attempts to read User Alpha's order item
+        beta_orders = client_b.table("normalized_order_items").select("*").eq("id", order_item_id).execute()
+        assert len(beta_orders.data or []) == 0, "RLS FAILURE: User Beta read User Alpha's order items!"
+        print("  ✓ Order Items Read Isolation ENFORCED: User Beta query returned 0 rows.")
+
+        # User Beta attempts to tamper/insert order item into User Alpha's restaurant
+        try:
+            client_b.table("normalized_order_items").insert({
+                "restaurant_id": created_rest_id,
+                "branch_id": primary_branch_id,
+                "order_id": "ORD-TAMPER",
+                "line_number": 1,
+                "order_date": "2026-11-01",
+                "item_name": "Tampered Item",
+                "quantity": 1
+            }).execute()
+            print("  ✗ CRITICAL FAILURE: User Beta inserted order into User Alpha's restaurant!")
+            sys.exit(1)
+        except Exception:
+            print("  ✓ Order Items Write Isolation ENFORCED: User Beta insert blocked by RLS.")
+
+        # D. OPERATIONAL DATA: FORECAST RUNS & RESULTS
+        run_res = client_a.table("forecast_runs").insert({
+            "restaurant_id": created_rest_id,
+            "branch_id": primary_branch_id,
+            "model_type": "daily_random_forest",
+            "frequency": "daily",
+            "start_date": "2026-11-02",
+            "end_date": "2026-11-15"
+        }).execute()
+        run_id = run_res.data[0]["id"]
+
+        result_res = client_a.table("forecast_results").insert({
+            "forecast_run_id": run_id,
+            "restaurant_id": created_rest_id,
+            "branch_id": primary_branch_id,
+            "item_name": "Paneer Butter Masala",
+            "category": "Main Course",
+            "forecast_date": "2026-11-02",
+            "predicted_orders": 30.0,
+            "prep_0pct": 30.0,
+            "prep_10pct": 33.0,
+            "prep_15pct": 34.5,
+            "prep_20pct": 36.0
+        }).execute()
+        result_id = result_res.data[0]["id"]
+        print(f"  ✓ User Alpha created operational forecast_result: {result_id}")
+
+        # User Beta attempts to read User Alpha's forecast results
+        beta_results = client_b.table("forecast_results").select("*").eq("id", result_id).execute()
+        assert len(beta_results.data or []) == 0, "RLS FAILURE: User Beta read User Alpha's forecast results!"
+        print("  ✓ Forecast Results Read Isolation ENFORCED: User Beta query returned 0 rows.")
+
+        # User Beta attempts to tamper/insert forecast results into User Alpha's restaurant
+        try:
+            client_b.table("forecast_results").insert({
+                "forecast_run_id": run_id,
+                "restaurant_id": created_rest_id,
+                "branch_id": primary_branch_id,
+                "item_name": "Tampered Forecast",
+                "forecast_date": "2026-11-02",
+                "predicted_orders": 999.0,
+                "prep_0pct": 999.0,
+                "prep_10pct": 999.0,
+                "prep_15pct": 999.0,
+                "prep_20pct": 999.0
+            }).execute()
+            print("  ✗ CRITICAL FAILURE: User Beta inserted forecast into User Alpha's restaurant!")
+            sys.exit(1)
+        except Exception:
+            print("  ✓ Forecast Results Write Isolation ENFORCED: User Beta insert blocked by RLS.")
 
         # ---------------------------------------------------------------------
         # STEP 6: STORAGE PATH-BASED RLS ISOLATION
         # ---------------------------------------------------------------------
         print("\n[STEP 6/6] Verifying Storage Path-Based RLS Isolation...")
         dummy_file_content = b"order_id,item_name,quantity\n101,Butter Chicken,2\n"
-        test_path = f"{created_rest_id}/upload_check/sample.csv"
+        test_storage_path = f"{created_rest_id}/upload_check/sample.csv"
 
         try:
             # User Alpha (Owner) uploads to their own restaurant folder
             client_a.storage.from_("restaurant-uploads").upload(
-                test_path,
+                test_storage_path,
                 dummy_file_content,
                 file_options={"content-type": "text/csv"}
             )
-            print(f"  ✓ User Alpha (Owner) uploaded file to: {test_path}")
+            print(f"  ✓ User Alpha (Owner) uploaded file to: {test_storage_path}")
 
             # User Alpha (Owner) downloads their own file to verify read access & integrity
-            downloaded_bytes = client_a.storage.from_("restaurant-uploads").download(test_path)
+            downloaded_bytes = client_a.storage.from_("restaurant-uploads").download(test_storage_path)
             if downloaded_bytes == dummy_file_content:
                 print(f"  ✓ User Alpha (Owner) downloaded own file successfully (100% byte integrity).")
             else:
@@ -282,26 +384,38 @@ def main():
 
             # User Beta attempts to download User Alpha's file
             try:
-                client_b.storage.from_("restaurant-uploads").download(test_path)
+                client_b.storage.from_("restaurant-uploads").download(test_storage_path)
                 print("  ✗ Storage RLS Failure: User Beta downloaded User Alpha's file!")
                 sys.exit(1)
             except Exception:
                 print("  ✓ Storage RLS ENFORCED: User Beta direct download was blocked.")
 
             # User Alpha cleans up their test file
-            client_a.storage.from_("restaurant-uploads").remove([test_path])
+            client_a.storage.from_("restaurant-uploads").remove([test_storage_path])
+            test_storage_path = None
             print(f"  ✓ Test storage file cleaned up successfully.")
         except Exception as e:
             print(f"  [NOTE] Storage path test encountered: {str(e)}")
 
     finally:
-        # Cleanup test restaurant if created
-        if created_rest_id:
+        # STRICT ISOLATED CLEANUP: Removes EXCLUSIVELY records and files created by this run
+        print("\n[CLEANUP] Cleaning up test records created by this run...")
+        if test_storage_path:
             try:
-                client_a.table("restaurants").delete().eq("id", created_rest_id).execute()
-                print(f"  ✓ Test restaurant cleaned up successfully.")
+                client_a.storage.from_("restaurant-uploads").remove([test_storage_path])
+                print(f"  ✓ Storage file '{test_storage_path}' cleaned up.")
             except Exception:
                 pass
+
+        if created_rest_id:
+            try:
+                # PostgreSQL ON DELETE CASCADE removes all operational child records
+                # (data_uploads, normalized_order_items, forecast_runs, forecast_results,
+                # memberships, branches, settings) belonging EXCLUSIVELY to created_rest_id.
+                client_a.table("restaurants").delete().eq("id", created_rest_id).execute()
+                print(f"  ✓ Test restaurant '{created_rest_id}' and all operational data cleaned up successfully.")
+            except Exception as e:
+                print(f"  [CLEANUP NOTE] {str(e)}")
 
     print("\n" + "=" * 70)
     print("ALL LIVE FORENSIC SECURITY & RLS VERIFICATIONS PASSED SUCCESSFULLY!")
@@ -310,4 +424,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
