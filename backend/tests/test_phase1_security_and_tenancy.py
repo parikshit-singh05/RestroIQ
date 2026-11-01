@@ -21,13 +21,21 @@ from app.services.tenant_service import tenant_service, has_sufficient_role
 
 TEST_SECRET = "test-supa-secret-for-signing-token-xyz-12345"
 
-def generate_test_jwt(user_id: str, email: str, expires_in_seconds: int = 3600) -> str:
+def generate_test_jwt(
+    user_id: str,
+    email: str,
+    expires_in_seconds: int = 3600,
+    aud: str = "authenticated",
+    issuer: str = None
+) -> str:
     """Generates a test Supabase JWT signed with TEST_SECRET."""
     now = datetime.now(timezone.utc)
+    iss = issuer or (f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1" if settings.SUPABASE_URL else "https://supabase.local/auth/v1")
     payload = {
         "sub": user_id,
         "email": email,
-        "aud": "authenticated",
+        "aud": aud,
+        "iss": iss,
         "role": "authenticated",
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(seconds=expires_in_seconds)).timestamp())
@@ -78,6 +86,18 @@ class TestPhase1SecurityAndTenancy(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             decode_and_verify_jwt(tampered_token)
         self.assertIn("invalid", str(ctx.exception).lower())
+
+        # Invalid audience token
+        bad_aud_token = generate_test_jwt(self.user_a_id, self.user_a_email, aud="wrong_audience")
+        with self.assertRaises(ValueError) as ctx:
+            decode_and_verify_jwt(bad_aud_token)
+        self.assertIn("audience", str(ctx.exception).lower())
+
+        # Invalid issuer token
+        bad_iss_token = generate_test_jwt(self.user_a_id, self.user_a_email, issuer="https://untrusted-auth.com/auth/v1")
+        with self.assertRaises(ValueError) as ctx:
+            decode_and_verify_jwt(bad_iss_token)
+        self.assertIn("issuer", str(ctx.exception).lower())
 
     def test_jwks_asymmetric_configuration_and_no_secret_requirement(self):
         """

@@ -92,38 +92,67 @@ def decode_and_verify_jwt(token: str) -> Dict[str, Any]:
 
     alg = unverified_header.get("alg", "HS256")
 
+    expected_issuer = f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1" if settings.SUPABASE_URL else None
+
     # Strategy 1: Asymmetric JWKS verification (RS256, ES256, EdDSA)
     if alg in ("RS256", "ES256", "EdDSA") and settings.SUPABASE_URL:
         jwks = get_jwks_client()
         if jwks:
             try:
                 signing_key = jwks.get_signing_key_from_jwt(token)
-                payload = jwt.decode(
-                    token,
-                    signing_key.key,
-                    algorithms=[alg],
-                    audience="authenticated",
-                    options={"verify_exp": True}
-                )
+                decode_kwargs: Dict[str, Any] = {
+                    "jwt": token,
+                    "key": signing_key.key,
+                    "algorithms": [alg],
+                    "audience": "authenticated",
+                    "options": {
+                        "verify_exp": True,
+                        "verify_aud": True,
+                        "verify_iss": bool(expected_issuer)
+                    }
+                }
+                if expected_issuer:
+                    decode_kwargs["issuer"] = expected_issuer
+
+                payload = jwt.decode(**decode_kwargs)
                 return payload
             except jwt.ExpiredSignatureError:
                 raise ValueError("Authentication token has expired.")
+            except jwt.InvalidAudienceError:
+                raise ValueError("Invalid token audience ('aud'). Must be 'authenticated'.")
+            except jwt.InvalidIssuerError:
+                raise ValueError("Invalid token issuer ('iss').")
+            except jwt.InvalidSignatureError:
+                raise ValueError("Invalid cryptographic signature.")
             except jwt.InvalidTokenError as e:
                 raise ValueError(f"JWKS verification failed: {str(e)}")
 
     # Strategy 2: If SUPABASE_JWT_SECRET is provided (e.g. in test suites)
     if settings.SUPABASE_JWT_SECRET:
         try:
-            payload = jwt.decode(
-                token,
-                settings.SUPABASE_JWT_SECRET,
-                algorithms=["HS256"],
-                audience="authenticated",
-                options={"verify_exp": True}
-            )
+            decode_kwargs = {
+                "jwt": token,
+                "key": settings.SUPABASE_JWT_SECRET,
+                "algorithms": ["HS256"],
+                "audience": "authenticated",
+                "options": {"verify_exp": True, "verify_aud": True}
+            }
+            # Verify issuer if present in token claims
+            unverified_claims = jwt.decode(token, options={"verify_signature": False})
+            if expected_issuer and "iss" in unverified_claims:
+                decode_kwargs["issuer"] = expected_issuer
+                decode_kwargs["options"]["verify_iss"] = True
+
+            payload = jwt.decode(**decode_kwargs)
             return payload
         except jwt.ExpiredSignatureError:
             raise ValueError("Authentication token has expired.")
+        except jwt.InvalidAudienceError:
+            raise ValueError("Invalid token audience ('aud'). Must be 'authenticated'.")
+        except jwt.InvalidIssuerError:
+            raise ValueError("Invalid token issuer ('iss').")
+        except jwt.InvalidSignatureError:
+            raise ValueError("Invalid cryptographic signature.")
         except jwt.InvalidTokenError as e:
             raise ValueError(f"Invalid authentication token: {str(e)}")
 
