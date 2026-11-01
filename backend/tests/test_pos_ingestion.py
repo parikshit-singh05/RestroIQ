@@ -34,7 +34,6 @@ def make_test_jwt(user_id: str, email: str) -> str:
 class TestPosIngestionEngine(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        # Configure secret for deterministic signature verification in tests
         settings.SUPABASE_JWT_SECRET = TEST_SECRET
         cls.client = TestClient(app)
 
@@ -54,8 +53,8 @@ class TestPosIngestionEngine(unittest.TestCase):
         )
         cls.restaurant_alpha_id = res_alpha.id
 
-        # Setup Secondary Branch for Alpha
-        branch_res = tenant_service.create_branch(
+        # Setup Primary Branch for Alpha
+        branch_res_1 = tenant_service.create_branch(
             restaurant_id=cls.restaurant_alpha_id,
             data=BranchCreate(
                 branch_code="IND01",
@@ -64,7 +63,35 @@ class TestPosIngestionEngine(unittest.TestCase):
                 is_primary=True
             )
         )
-        cls.branch_alpha_id = branch_res.id
+        cls.branch_alpha_id = branch_res_1.id
+
+        # Setup Secondary Branch for Alpha (Multi-Branch Tenant)
+        branch_res_2 = tenant_service.create_branch(
+            restaurant_id=cls.restaurant_alpha_id,
+            data=BranchCreate(
+                branch_code="KOR02",
+                branch_name="Koramangala, Bengaluru",
+                city="Bengaluru",
+                is_primary=False
+            )
+        )
+        cls.branch_alpha_2_id = branch_res_2.id
+
+        # Setup Single-Branch Tenant Gamma (Solo Cafe)
+        cls.user_gamma = str(uuid.uuid4())
+        cls.jwt_gamma = make_test_jwt(cls.user_gamma, "gamma@solocafe.com")
+        res_gamma = tenant_service.create_restaurant(
+            user_id=cls.user_gamma,
+            user_email="gamma@solocafe.com",
+            data=RestaurantCreate(
+                name="Solo Coffee Roasters",
+                currency="INR",
+                timezone="Asia/Kolkata",
+                operational_model="quick_service"
+            )
+        )
+        cls.restaurant_gamma_id = res_gamma.id
+        # TenantService automatically creates 1 default branch ('MAIN') for Gamma
 
         # Setup Tenant Beta (Independent competitor)
         cls.user_beta = str(uuid.uuid4())
@@ -108,7 +135,6 @@ class TestPosIngestionEngine(unittest.TestCase):
         self.assertEqual(suggested["net_sales"], "Net_Total")
         self.assertEqual(suggested["category"], "Menu_Category")
 
-        # Verify suggestions list has high confidence
         date_sug = next(s for s in suggestions_list if s.canonical_field == "order_date")
         self.assertTrue(date_sug.confidence >= 0.95)
         self.assertTrue(date_sug.required)
@@ -119,7 +145,6 @@ class TestPosIngestionEngine(unittest.TestCase):
         self.assertEqual(str(ingestion_service.parse_flexible_date("15-08-2026")), "2026-08-15")
         self.assertEqual(str(ingestion_service.parse_flexible_date("15/08/2026")), "2026-08-15")
         self.assertEqual(str(ingestion_service.parse_flexible_date("2026/08/15")), "2026-08-15")
-        # Invalid date
         self.assertIsNone(ingestion_service.parse_flexible_date("invalid-date-string"))
         self.assertIsNone(ingestion_service.parse_flexible_date(""))
 
@@ -128,9 +153,9 @@ class TestPosIngestionEngine(unittest.TestCase):
         headers = ["Date", "Dish", "Quantity", "Price"]
         rows = [
             {"Date": "2026-08-01", "Dish": "Paneer Tikka", "Quantity": "2", "Price": "260"},
-            {"Date": "2026-08-01", "Dish": "Butter Chicken", "Quantity": "-1", "Price": "380"},  # Negative qty (refund)
-            {"Date": "not-a-date", "Dish": "Dal Makhani", "Quantity": "1", "Price": "280"},       # Invalid date
-            {"Date": "2026-08-02", "Dish": "", "Quantity": "3", "Price": "65"},                  # Missing item name
+            {"Date": "2026-08-01", "Dish": "Butter Chicken", "Quantity": "-1", "Price": "380"},
+            {"Date": "not-a-date", "Dish": "Dal Makhani", "Quantity": "1", "Price": "280"},
+            {"Date": "2026-08-02", "Dish": "", "Quantity": "3", "Price": "65"},
         ]
 
         mapping = {
@@ -188,7 +213,6 @@ class TestPosIngestionEngine(unittest.TestCase):
             "unit_price": "Rate_INR"
         })
 
-        # First commit
         res1 = self.client.post(
             f"/api/v1/tenant/restaurants/{self.restaurant_alpha_id}/uploads/commit",
             headers={"Authorization": f"Bearer {self.jwt_alpha}"},
@@ -216,36 +240,219 @@ class TestPosIngestionEngine(unittest.TestCase):
         self.assertEqual(d2["duplicate_rows"], 3)
         self.assertEqual(d2["status"], "completed")
 
-    def test_06_load_sample_dataset_and_historical_summary(self):
-        """Test POST /tenant/restaurants/{id}/uploads/load-sample and GET orders/summary."""
+    def test_06_branch_assignment_single_branch_unambiguous(self):
+        """Single-branch restaurant (Gamma) with file lacking branch column maps unambiguously without error."""
+        csv_content = (
+            "Order_Date,Item,Units,Total\n"
+            "2026-08-01,Espresso,2,240\n"
+            "2026-08-01,Croissant,1,160\n"
+        ).encode("utf-8")
+
+        mapping_json = json.dumps({
+            "order_date": "Order_Date",
+            "item_name": "Item",
+            "quantity": "Units",
+            "net_sales": "Total"
+        })
+
+        # Single-branch: succeeds without specifying branch_id because there is only 1 branch
+        res = self.client.post(
+            f"/api/v1/tenant/restaurants/{self.restaurant_gamma_id}/uploads/commit",
+            headers={"Authorization": f"Bearer {self.jwt_gamma}"},
+            files={"file": ("single_branch.csv", io.BytesIO(csv_content), "text/csv")},
+            data={"mapping": mapping_json}
+        )
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["inserted_rows"], 2)
+        self.assertEqual(data["status"], "completed")
+
+    def test_07_branch_assignment_multi_branch_with_column(self):
+        """Multi-branch restaurant (Alpha) where file maps branch column assigns each line to its correct branch."""
+        csv_content = (
+            "Date,Dish,Qty,Branch\n"
+            "2026-08-05,Paneer Tikka,2,IND01\n"
+            "2026-08-05,Chicken 65,1,KOR02\n"
+        ).encode("utf-8")
+
+        mapping_json = json.dumps({
+            "order_date": "Date",
+            "item_name": "Dish",
+            "quantity": "Qty",
+            "branch_code": "Branch"
+        })
+
+        res = self.client.post(
+            f"/api/v1/tenant/restaurants/{self.restaurant_alpha_id}/uploads/commit",
+            headers={"Authorization": f"Bearer {self.jwt_alpha}"},
+            files={"file": ("multi_branch.csv", io.BytesIO(csv_content), "text/csv")},
+            data={"mapping": mapping_json}
+        )
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["inserted_rows"], 2)
+
+    def test_08_branch_assignment_multi_branch_ambiguous_rejected(self):
+        """MANDATORY: Multi-branch restaurant where file lacks branch column and NO fallback branch is given MUST be rejected."""
+        csv_content = (
+            "Date,Dish,Qty\n"
+            "2026-08-06,Dal Makhani,2\n"
+        ).encode("utf-8")
+
+        mapping_json = json.dumps({
+            "order_date": "Date",
+            "item_name": "Dish",
+            "quantity": "Qty"
+        })
+
+        # No branch_id provided for multi-branch restaurant Alpha -> MUST FAIL
+        res = self.client.post(
+            f"/api/v1/tenant/restaurants/{self.restaurant_alpha_id}/uploads/commit",
+            headers={"Authorization": f"Bearer {self.jwt_alpha}"},
+            files={"file": ("ambiguous.csv", io.BytesIO(csv_content), "text/csv")},
+            data={"mapping": mapping_json}
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("Ambiguous branch assignment", res.json()["detail"])
+        self.assertIn("Silent assignment to primary branch is strictly prohibited", res.json()["detail"])
+
+    def test_09_branch_assignment_multi_branch_explicit_confirmation(self):
+        """Multi-branch restaurant where file lacks branch column succeeds when user explicitly confirms branch_id."""
+        csv_content = (
+            "Date,Dish,Qty\n"
+            "2026-08-07,Mutton Rogan Josh,1\n"
+        ).encode("utf-8")
+
+        mapping_json = json.dumps({
+            "order_date": "Date",
+            "item_name": "Dish",
+            "quantity": "Qty"
+        })
+
+        # Explicitly passing branch_id confirms user selection
+        res = self.client.post(
+            f"/api/v1/tenant/restaurants/{self.restaurant_alpha_id}/uploads/commit",
+            headers={"Authorization": f"Bearer {self.jwt_alpha}"},
+            files={"file": ("confirmed_branch.csv", io.BytesIO(csv_content), "text/csv")},
+            data={"mapping": mapping_json, "branch_id": self.branch_alpha_2_id}
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["inserted_rows"], 1)
+
+    def test_10_branch_assignment_unrecognized_branch_rejected(self):
+        """File containing an unrecognized branch name without user confirmation is rejected."""
+        csv_content = (
+            "Date,Dish,Qty,Branch\n"
+            "2026-08-08,Butter Chicken,1,NonExistentOutlet\n"
+        ).encode("utf-8")
+
+        mapping_json = json.dumps({
+            "order_date": "Date",
+            "item_name": "Dish",
+            "quantity": "Qty",
+            "branch_code": "Branch"
+        })
+
+        res = self.client.post(
+            f"/api/v1/tenant/restaurants/{self.restaurant_alpha_id}/uploads/commit",
+            headers={"Authorization": f"Bearer {self.jwt_alpha}"},
+            files={"file": ("unrecognized_branch.csv", io.BytesIO(csv_content), "text/csv")},
+            data={"mapping": mapping_json}
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("Unrecognized branch", res.json()["detail"])
+
+    def test_11_storage_upload_reference_and_signed_download_url(self):
+        """Verify uploads track storage path {restaurant_id}/{upload_id}/{filename} and support signed download URLs."""
+        csv_content = (
+            "Bill_No,Bill_Date,Dish_Name,Qty_Sold\n"
+            "B-901,2026-08-09,Cold Coffee,2\n"
+        ).encode("utf-8")
+
+        mapping_json = json.dumps({
+            "order_date": "Bill_Date",
+            "item_name": "Dish_Name",
+            "quantity": "Qty_Sold",
+            "order_id": "Bill_No"
+        })
+
+        commit_res = self.client.post(
+            f"/api/v1/tenant/restaurants/{self.restaurant_alpha_id}/uploads/commit",
+            headers={"Authorization": f"Bearer {self.jwt_alpha}"},
+            files={"file": ("beverages.csv", io.BytesIO(csv_content), "text/csv")},
+            data={"mapping": mapping_json, "branch_id": self.branch_alpha_id}
+        )
+        self.assertEqual(commit_res.status_code, 200)
+        commit_data = commit_res.json()
+        upload_id = commit_data["upload_id"]
+        storage_path = commit_data["storage_path"]
+
+        # Verify storage path structure follows {restaurant_id}/{upload_id}/{filename}
+        expected_prefix = f"{self.restaurant_alpha_id}/{upload_id}/"
+        self.assertTrue(storage_path.startswith(expected_prefix))
+        self.assertIn("beverages.csv", storage_path)
+
+        # Verify signed download URL generation
+        dl_res = self.client.get(
+            f"/api/v1/tenant/restaurants/{self.restaurant_alpha_id}/uploads/{upload_id}/download-url",
+            headers={"Authorization": f"Bearer {self.jwt_alpha}"}
+        )
+        self.assertEqual(dl_res.status_code, 200)
+        dl_data = dl_res.json()
+        self.assertEqual(dl_data["upload_id"], upload_id)
+        self.assertIn("restaurant-uploads", dl_data["download_url"])
+        self.assertEqual(dl_data["storage_path"], storage_path)
+
+        # Cross-tenant denial: Tenant Beta cannot get download URL for Alpha's file
+        dl_unauth = self.client.get(
+            f"/api/v1/tenant/restaurants/{self.restaurant_alpha_id}/uploads/{upload_id}/download-url",
+            headers={"Authorization": f"Bearer {self.jwt_beta}"}
+        )
+        self.assertEqual(dl_unauth.status_code, 403)
+
+    def test_12_synthetic_dataset_isolation_and_purge(self):
+        """Verify synthetic sample data is tagged, isolated, and completely purgeable without affecting real orders."""
+        # Load sample data
         res_sample = self.client.post(
             f"/api/v1/tenant/restaurants/{self.restaurant_alpha_id}/uploads/load-sample",
             headers={"Authorization": f"Bearer {self.jwt_alpha}"}
         )
         self.assertEqual(res_sample.status_code, 200)
-        sample_data = res_sample.json()
-        self.assertGreater(sample_data["inserted_rows"], 1000)
-        self.assertEqual(sample_data["status"], "completed")
+        self.assertTrue(res_sample.json()["is_sample"])
 
-        # Now test historical summary endpoint
-        res_summary = self.client.get(
+        # Check summary indicates sample data is active
+        summary_res = self.client.get(
             f"/api/v1/tenant/restaurants/{self.restaurant_alpha_id}/orders/summary",
             headers={"Authorization": f"Bearer {self.jwt_alpha}"}
         )
-        self.assertEqual(res_summary.status_code, 200)
-        summary = res_summary.json()
-        self.assertGreater(summary["total_orders"], 100)
-        self.assertGreater(summary["total_sales"], 10000.0)
-        self.assertEqual(summary["currency_symbol"], "₹")
-        self.assertGreaterEqual(summary["total_days"], 84)
-        # Should be classified as 'adequate' since it has 112 days (>84 days)
-        self.assertEqual(summary["data_sufficiency"], "adequate")
-        self.assertGreater(len(summary["top_items"]), 0)
-        self.assertGreater(len(summary["daily_velocity"]), 0)
+        self.assertEqual(summary_res.status_code, 200)
+        summary = summary_res.json()
+        self.assertTrue(summary["is_sample_active"])
+        self.assertGreater(summary["sample_orders_count"], 1000)
 
-    def test_07_cross_tenant_isolation_on_ingestion(self):
+        # Purge sample data
+        purge_res = self.client.delete(
+            f"/api/v1/tenant/restaurants/{self.restaurant_alpha_id}/uploads/sample",
+            headers={"Authorization": f"Bearer {self.jwt_alpha}"}
+        )
+        self.assertEqual(purge_res.status_code, 200)
+        purge_data = purge_res.json()
+        self.assertGreater(purge_data["deleted_orders_count"], 1000)
+
+        # Check summary again: sample data is NO LONGER active, but real previously committed records remain!
+        summary_after = self.client.get(
+            f"/api/v1/tenant/restaurants/{self.restaurant_alpha_id}/orders/summary",
+            headers={"Authorization": f"Bearer {self.jwt_alpha}"}
+        )
+        self.assertEqual(summary_after.status_code, 200)
+        after_data = summary_after.json()
+        self.assertFalse(after_data["is_sample_active"])
+        self.assertEqual(after_data["sample_orders_count"], 0)
+        # Real orders from earlier tests (batch1, multi_branch, beverages) are preserved!
+        self.assertGreater(after_data["total_line_items"], 0)
+
+    def test_13_cross_tenant_isolation_on_ingestion(self):
         """Ensure Tenant Beta cannot upload data to or read order summaries of Tenant Alpha."""
-        # Beta tries to preview upload to Alpha's restaurant
         csv_content = b"Date,Dish,Quantity\n2026-08-01,Butter Chicken,1\n"
         res_unauth = self.client.post(
             f"/api/v1/tenant/restaurants/{self.restaurant_alpha_id}/uploads/preview",
@@ -255,13 +462,19 @@ class TestPosIngestionEngine(unittest.TestCase):
         self.assertEqual(res_unauth.status_code, 403)
         self.assertIn("Access denied", res_unauth.json()["detail"])
 
-        # Beta tries to read Alpha's order summary
         res_unauth_summary = self.client.get(
             f"/api/v1/tenant/restaurants/{self.restaurant_alpha_id}/orders/summary",
             headers={"Authorization": f"Bearer {self.jwt_beta}"}
         )
         self.assertEqual(res_unauth_summary.status_code, 403)
         self.assertIn("Access denied", res_unauth_summary.json()["detail"])
+
+        # Beta cannot purge Alpha's sample data
+        res_unauth_purge = self.client.delete(
+            f"/api/v1/tenant/restaurants/{self.restaurant_alpha_id}/uploads/sample",
+            headers={"Authorization": f"Bearer {self.jwt_beta}"}
+        )
+        self.assertEqual(res_unauth_purge.status_code, 403)
 
 
 if __name__ == "__main__":

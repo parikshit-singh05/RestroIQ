@@ -17,6 +17,7 @@ class FilePreviewResponse(BaseModel):
     preview_rows: List[Dict[str, Any]]
     total_estimated_rows: int
     detected_branches: List[str] = []
+    requires_branch_selection: bool = False
 
 class ValidationAnomaly(BaseModel):
     row_index: int
@@ -40,16 +41,19 @@ class ValidationSummaryResponse(BaseModel):
     unique_items_count: int = 0
     unique_branches_count: int = 0
     detected_branches: List[str] = []
+    branch_resolution_status: str = "valid" # "valid", "unambiguous_single_branch", "ambiguous_selection_required"
 
 class CommitUploadRequest(BaseModel):
     mapping: Dict[str, str] = Field(..., description="Canonical field -> uploaded CSV/XLSX header")
-    branch_id: Optional[str] = Field(None, description="Fallback branch ID if branch is not in file")
+    branch_id: Optional[str] = Field(None, description="Explicit branch ID if file lacks branch column or has unrecognized branches")
     save_mapping_name: Optional[str] = Field(None, description="Optional name to save this mapping profile")
 
 class CommitUploadResponse(BaseModel):
     upload_id: str
     import_job_id: str
     status: str
+    storage_path: Optional[str] = None
+    is_sample: bool = False
     total_rows: int
     valid_rows: int
     inserted_rows: int
@@ -65,9 +69,24 @@ class UploadRecordResponse(BaseModel):
     file_name: str
     file_format: str
     file_size_bytes: int
+    storage_path: Optional[str] = None
+    is_sample: bool = False
     row_count: Optional[int] = None
     status: str
     created_at: Optional[str] = None
+
+class DownloadUrlResponse(BaseModel):
+    upload_id: str
+    file_name: str
+    storage_path: str
+    download_url: str
+    expires_in_seconds: int = 300
+
+class PurgeSampleResponse(BaseModel):
+    restaurant_id: str
+    deleted_orders_count: int
+    deleted_uploads_count: int
+    message: str
 
 class HistoricalOrderSummary(BaseModel):
     restaurant_id: str
@@ -82,5 +101,7 @@ class HistoricalOrderSummary(BaseModel):
     unique_items_count: int = 0
     active_branches_count: int = 0
     data_sufficiency: str # "adequate", "marginal", "insufficient"
+    is_sample_active: bool = False
+    sample_orders_count: int = 0
     top_items: List[Dict[str, Any]] = []
     daily_velocity: List[Dict[str, Any]] = []

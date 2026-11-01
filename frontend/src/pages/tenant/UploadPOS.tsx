@@ -340,6 +340,14 @@ export function UploadPOS() {
               </div>
             </div>
 
+            {/* Branch Ambiguity Safeguard */}
+            {branches.length > 1 && !mapping.branch_code && (
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-2.5 text-amber-400 text-[12px] font-semibold">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>Explicit Branch Selection Required: This file lacks a branch column. You must explicitly select the target outlet above. Silent assignment to the primary branch is prohibited.</span>
+              </div>
+            )}
+
             {/* Grid of Canonical Fields */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {previewData.column_suggestions.map((sug: ColumnSuggestion) => {
@@ -445,7 +453,13 @@ export function UploadPOS() {
 
               <button
                 onClick={handleCommitIngestion}
-                disabled={ingesting || !mapping.order_date || !mapping.item_name || !mapping.quantity}
+                disabled={
+                  ingesting ||
+                  !mapping.order_date ||
+                  !mapping.item_name ||
+                  !mapping.quantity ||
+                  (branches.length > 1 && !mapping.branch_code && !selectedBranchId)
+                }
                 className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[13px] font-semibold transition-all shadow-md shadow-emerald-600/20 disabled:opacity-50 cursor-pointer"
               >
                 {ingesting ? (
@@ -467,3 +481,4 @@ export function UploadPOS() {
     </div>
   )
 }
+

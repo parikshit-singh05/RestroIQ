@@ -50,6 +50,8 @@ interface SummaryData {
   unique_items_count: number
   active_branches_count: number
   data_sufficiency: 'adequate' | 'marginal' | 'insufficient'
+  is_sample_active?: boolean
+  sample_orders_count?: number
   top_items: TopItem[]
   daily_velocity: DailyPoint[]
 }
@@ -78,6 +80,19 @@ export function TenantOverview() {
       setError(err?.response?.data?.detail || err?.message || 'Failed to fetch tenant overview.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handlePurgeSample = async () => {
+    if (!currentRestaurant) return
+    if (!window.confirm('Are you sure you want to purge all synthetic sample data? Real restaurant uploads will remain unaffected.')) return
+    try {
+      await api.delete(`/tenant/restaurants/${currentRestaurant.id}/uploads/sample`, {
+        headers: { Authorization: `Bearer ${session?.access_token}` }
+      })
+      await fetchSummary()
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || 'Failed to purge sample data.')
     }
   }
 
@@ -128,6 +143,27 @@ export function TenantOverview() {
       {error && (
         <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-[13px]">
           {error}
+        </div>
+      )}
+
+      {/* Synthetic Sample Data Isolation Banner */}
+      {summary?.is_sample_active && (
+        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-amber-400">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 shrink-0 text-amber-400" />
+            <div>
+              <div className="text-[13px] font-bold">Synthetic Sample Data Active ({summary.sample_orders_count?.toLocaleString()} lines)</div>
+              <div className="text-[12px] text-amber-400/80">
+                This workspace contains pre-packaged test data from The Spice Garden Cafe. Real restaurant uploads remain completely isolated.
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={handlePurgeSample}
+            className="px-3.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-[12px] font-bold transition-all cursor-pointer whitespace-nowrap self-start sm:self-auto"
+          >
+            Purge Sample Data
+          </button>
         </div>
       )}
 

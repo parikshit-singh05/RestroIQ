@@ -334,3 +334,4 @@ function TenantNavItem({ to, icon: Icon, label, badge }: { to: string; icon: any
     </NavLink>
   )
 }
+
