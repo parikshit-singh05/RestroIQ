@@ -73,3 +73,4 @@ class TenantContext(BaseModel):
     email: str
     restaurant_id: str
     role: str
+

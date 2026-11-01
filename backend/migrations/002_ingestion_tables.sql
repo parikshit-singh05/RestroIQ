@@ -71,7 +71,9 @@ CREATE INDEX IF NOT EXISTS idx_import_jobs_upload_id ON public.import_jobs(uploa
 -- ------------------------------------------------------------------------------
 -- 4. NORMALIZED_ORDER_ITEMS TABLE
 -- Canonical operational sales log with robust duplicate preservation
--- (line_number preserves legitimate repeated dishes in same order)
+-- (line_number preserves legitimate repeated dishes in same order ticket;
+--  UNIQUE NULLS NOT DISTINCT guarantees PostgreSQL treats identical rows with
+--  or without branch_id as duplicate violations during re-imports)
 -- ------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.normalized_order_items (
     id BIGSERIAL PRIMARY KEY,
@@ -92,8 +94,15 @@ CREATE TABLE IF NOT EXISTS public.normalized_order_items (
     promotion_tag VARCHAR(100) DEFAULT 'none',
     order_status VARCHAR(50) DEFAULT 'completed',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    -- Idempotency constraint: identical order, line number, dish name, and date
-    CONSTRAINT uq_order_line_item UNIQUE (restaurant_id, branch_id, order_id, line_number, item_name, order_date)
+    -- Idempotency constraint using SQL:2023 / PG15 NULLS NOT DISTINCT
+    CONSTRAINT uq_order_line_item UNIQUE NULLS NOT DISTINCT (
+        restaurant_id,
+        branch_id,
+        order_id,
+        line_number,
+        item_name,
+        order_date
+    )
 );
 
 CREATE INDEX IF NOT EXISTS idx_order_items_restaurant_date ON public.normalized_order_items(restaurant_id, order_date);

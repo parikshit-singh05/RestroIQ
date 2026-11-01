@@ -86,3 +86,4 @@ def require_tenant_access(required_role: str = "analyst") -> Callable:
         )
 
     return tenant_authorizer
+

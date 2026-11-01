@@ -38,7 +38,10 @@ BEGIN
         updated_at = NOW();
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+
+-- Restrict function execution strictly to triggers / postgres
+REVOKE ALL ON FUNCTION public.handle_new_user() FROM PUBLIC;
 
 -- Bind trigger to auth.users if trigger does not exist
 DO $$
@@ -57,6 +60,7 @@ END $$;
 -- ------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.restaurants (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
     name VARCHAR(255) NOT NULL,
     slug VARCHAR(255) NOT NULL UNIQUE,
     currency VARCHAR(10) NOT NULL DEFAULT 'INR',
@@ -68,6 +72,7 @@ CREATE TABLE IF NOT EXISTS public.restaurants (
 );
 
 CREATE INDEX IF NOT EXISTS idx_restaurants_slug ON public.restaurants(slug);
+CREATE INDEX IF NOT EXISTS idx_restaurants_created_by ON public.restaurants(created_by);
 
 -- ------------------------------------------------------------------------------
 -- 3. RESTAURANT_MEMBERSHIPS TABLE (Multi-Tenant RBAC)

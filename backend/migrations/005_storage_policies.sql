@@ -1,8 +1,24 @@
 -- ==============================================================================
 -- Migration: 005_storage_policies.sql
 -- Description: Provisioning private Supabase Storage bucket 'restaurant-uploads'
---              with path-based tenant isolation policies.
+--              with path-based tenant isolation policies and safe uuid handling.
 -- ==============================================================================
+
+-- Helper function to safely cast text to UUID without throwing syntax exceptions
+CREATE OR REPLACE FUNCTION public.safe_cast_uuid(val TEXT)
+RETURNS UUID AS $$
+BEGIN
+    IF val ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+        RETURN val::uuid;
+    END IF;
+    RETURN NULL;
+EXCEPTION WHEN OTHERS THEN
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE SET search_path = public, pg_temp;
+
+REVOKE ALL ON FUNCTION public.safe_cast_uuid(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.safe_cast_uuid(TEXT) TO authenticated, service_role, anon;
 
 -- 1. Create the private bucket if it does not already exist
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
@@ -32,7 +48,7 @@ CREATE POLICY "Tenant members can view their restaurant uploads"
     USING (
         bucket_id = 'restaurant-uploads' AND
         public.user_has_restaurant_role(
-            ((storage.foldername(name))[1])::uuid,
+            public.safe_cast_uuid((storage.foldername(name))[1]),
             'analyst'
         )
     );
@@ -43,7 +59,7 @@ CREATE POLICY "Tenant admins can upload files"
     WITH CHECK (
         bucket_id = 'restaurant-uploads' AND
         public.user_has_restaurant_role(
-            ((storage.foldername(name))[1])::uuid,
+            public.safe_cast_uuid((storage.foldername(name))[1]),
             'admin'
         )
     );
@@ -54,7 +70,7 @@ CREATE POLICY "Tenant admins can delete their uploads"
     USING (
         bucket_id = 'restaurant-uploads' AND
         public.user_has_restaurant_role(
-            ((storage.foldername(name))[1])::uuid,
+            public.safe_cast_uuid((storage.foldername(name))[1]),
             'admin'
         )
     );

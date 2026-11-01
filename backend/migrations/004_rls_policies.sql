@@ -22,7 +22,7 @@ BEGIN
         RETURN FALSE;
     END IF;
 
-    -- Query verified membership
+    -- Query verified membership (runs with SECURITY DEFINER privileges to prevent recursion)
     SELECT role INTO user_role
     FROM public.restaurant_memberships
     WHERE restaurant_id = target_restaurant_id
@@ -44,10 +44,54 @@ BEGIN
         RETURN FALSE;
     END IF;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+
+-- Revoke public execution; grant only to authenticated users and service_role
+REVOKE ALL ON FUNCTION public.user_has_restaurant_role(UUID, VARCHAR) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.user_has_restaurant_role(UUID, VARCHAR) TO authenticated, service_role;
 
 -- ------------------------------------------------------------------------------
--- 2. ENABLE ROW LEVEL SECURITY ON ALL TABLES
+-- 2. TRIGGER: ATOMIC OWNER MEMBERSHIP ON RESTAURANT CREATION
+-- Prevents orphaned organizations and ensures creator is atomically owner
+-- ------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.handle_new_restaurant()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- If created_by is populated, automatically insert owner membership and default branch
+    IF NEW.created_by IS NOT NULL THEN
+        INSERT INTO public.restaurant_memberships (restaurant_id, user_id, role)
+        VALUES (NEW.id, NEW.created_by, 'owner')
+        ON CONFLICT (restaurant_id, user_id) DO NOTHING;
+
+        -- Create default primary outlet
+        INSERT INTO public.restaurant_branches (restaurant_id, branch_code, branch_name, city, is_primary)
+        VALUES (NEW.id, 'MAIN', NEW.name || ' - Primary', 'Bengaluru', true)
+        ON CONFLICT (restaurant_id, branch_code) DO NOTHING;
+
+        -- Create default operational settings
+        INSERT INTO public.restaurant_settings (restaurant_id, default_prep_buffer, default_forecasting_frequency)
+        VALUES (NEW.id, 10, 'daily')
+        ON CONFLICT (restaurant_id) DO NOTHING;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+
+REVOKE ALL ON FUNCTION public.handle_new_restaurant() FROM PUBLIC;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger WHERE tgname = 'on_restaurant_created'
+    ) THEN
+        CREATE TRIGGER on_restaurant_created
+        AFTER INSERT ON public.restaurants
+        FOR EACH ROW EXECUTE FUNCTION public.handle_new_restaurant();
+    END IF;
+END $$;
+
+-- ------------------------------------------------------------------------------
+-- 3. ENABLE ROW LEVEL SECURITY ON ALL TABLES
 -- ------------------------------------------------------------------------------
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.restaurants ENABLE ROW LEVEL SECURITY;
@@ -65,7 +109,7 @@ ALTER TABLE public.model_evaluations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.restaurant_settings ENABLE ROW LEVEL SECURITY;
 
 -- ------------------------------------------------------------------------------
--- 3. PROFILES POLICIES
+-- 4. PROFILES POLICIES
 -- ------------------------------------------------------------------------------
 DROP POLICY IF EXISTS "Users can view their own profile" ON public.profiles;
 CREATE POLICY "Users can view their own profile"
@@ -78,17 +122,23 @@ CREATE POLICY "Users can update their own profile"
     USING (auth.uid() = id);
 
 -- ------------------------------------------------------------------------------
--- 4. RESTAURANTS POLICIES
+-- 5. RESTAURANTS POLICIES
 -- ------------------------------------------------------------------------------
 DROP POLICY IF EXISTS "Members can view their restaurants" ON public.restaurants;
 CREATE POLICY "Members can view their restaurants"
     ON public.restaurants FOR SELECT
-    USING (public.user_has_restaurant_role(id, 'analyst'));
+    USING (
+        created_by = auth.uid() OR
+        public.user_has_restaurant_role(id, 'analyst')
+    );
 
 DROP POLICY IF EXISTS "Authenticated users can create a restaurant" ON public.restaurants;
 CREATE POLICY "Authenticated users can create a restaurant"
     ON public.restaurants FOR INSERT
-    WITH CHECK (auth.uid() IS NOT NULL);
+    WITH CHECK (
+        auth.uid() IS NOT NULL AND
+        (created_by IS NULL OR created_by = auth.uid())
+    );
 
 DROP POLICY IF EXISTS "Admins and owners can update their restaurant" ON public.restaurants;
 CREATE POLICY "Admins and owners can update their restaurant"
@@ -101,7 +151,7 @@ CREATE POLICY "Owners can delete their restaurant"
     USING (public.user_has_restaurant_role(id, 'owner'));
 
 -- ------------------------------------------------------------------------------
--- 5. RESTAURANT_MEMBERSHIPS POLICIES
+-- 6. RESTAURANT_MEMBERSHIPS POLICIES
 -- ------------------------------------------------------------------------------
 DROP POLICY IF EXISTS "Members can view restaurant memberships" ON public.restaurant_memberships;
 CREATE POLICY "Members can view restaurant memberships"
@@ -135,7 +185,7 @@ CREATE POLICY "Owners can remove members or users can leave"
     );
 
 -- ------------------------------------------------------------------------------
--- 6. RESTAURANT_BRANCHES POLICIES
+-- 7. RESTAURANT_BRANCHES POLICIES
 -- ------------------------------------------------------------------------------
 DROP POLICY IF EXISTS "Members can view branches" ON public.restaurant_branches;
 CREATE POLICY "Members can view branches"
@@ -149,7 +199,7 @@ CREATE POLICY "Admins can manage branches"
     WITH CHECK (public.user_has_restaurant_role(restaurant_id, 'admin'));
 
 -- ------------------------------------------------------------------------------
--- 7. DATA_UPLOADS & IMPORT_JOBS POLICIES
+-- 8. DATA_UPLOADS & IMPORT_JOBS POLICIES
 -- ------------------------------------------------------------------------------
 DROP POLICY IF EXISTS "Members can view uploads" ON public.data_uploads;
 CREATE POLICY "Members can view uploads"
@@ -174,7 +224,7 @@ CREATE POLICY "Admins can manage import jobs"
     WITH CHECK (public.user_has_restaurant_role(restaurant_id, 'admin'));
 
 -- ------------------------------------------------------------------------------
--- 8. COLUMN_MAPPINGS POLICIES
+-- 9. COLUMN_MAPPINGS POLICIES
 -- ------------------------------------------------------------------------------
 DROP POLICY IF EXISTS "Members can view column mappings" ON public.column_mappings;
 CREATE POLICY "Members can view column mappings"
@@ -188,7 +238,7 @@ CREATE POLICY "Admins can manage column mappings"
     WITH CHECK (public.user_has_restaurant_role(restaurant_id, 'admin'));
 
 -- ------------------------------------------------------------------------------
--- 9. NORMALIZED_ORDER_ITEMS POLICIES
+-- 10. NORMALIZED_ORDER_ITEMS POLICIES
 -- ------------------------------------------------------------------------------
 DROP POLICY IF EXISTS "Members can view normalized order items" ON public.normalized_order_items;
 CREATE POLICY "Members can view normalized order items"
@@ -202,7 +252,7 @@ CREATE POLICY "Admins can insert and modify order items"
     WITH CHECK (public.user_has_restaurant_role(restaurant_id, 'admin'));
 
 -- ------------------------------------------------------------------------------
--- 10. MENU_ITEMS POLICIES
+-- 11. MENU_ITEMS POLICIES
 -- ------------------------------------------------------------------------------
 DROP POLICY IF EXISTS "Members can view menu items" ON public.menu_items;
 CREATE POLICY "Members can view menu items"
@@ -216,7 +266,7 @@ CREATE POLICY "Admins can manage menu items"
     WITH CHECK (public.user_has_restaurant_role(restaurant_id, 'admin'));
 
 -- ------------------------------------------------------------------------------
--- 11. FORECASTING & EVALUATIONS POLICIES
+-- 12. FORECASTING & EVALUATIONS POLICIES
 -- ------------------------------------------------------------------------------
 DROP POLICY IF EXISTS "Members can view forecast jobs" ON public.forecast_jobs;
 CREATE POLICY "Members can view forecast jobs"
@@ -263,7 +313,7 @@ CREATE POLICY "Admins can manage model evaluations"
     WITH CHECK (public.user_has_restaurant_role(restaurant_id, 'admin'));
 
 -- ------------------------------------------------------------------------------
--- 12. RESTAURANT_SETTINGS POLICIES
+-- 13. RESTAURANT_SETTINGS POLICIES
 -- ------------------------------------------------------------------------------
 DROP POLICY IF EXISTS "Members can view restaurant settings" ON public.restaurant_settings;
 CREATE POLICY "Members can view restaurant settings"

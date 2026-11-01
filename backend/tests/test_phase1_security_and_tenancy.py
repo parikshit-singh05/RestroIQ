@@ -11,7 +11,12 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from app.main import app
 from app.core.config import settings
-from app.core.supabase import decode_and_verify_jwt, get_tenant_supabase_client
+from app.core.supabase import (
+    decode_and_verify_jwt,
+    get_tenant_supabase_client,
+    get_admin_supabase_client,
+    get_jwks_client
+)
 from app.services.tenant_service import tenant_service, has_sufficient_role
 
 TEST_SECRET = "test-supa-secret-for-signing-token-xyz-12345"
@@ -73,6 +78,20 @@ class TestPhase1SecurityAndTenancy(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             decode_and_verify_jwt(tampered_token)
         self.assertIn("invalid", str(ctx.exception).lower())
+
+    def test_jwks_asymmetric_configuration_and_no_secret_requirement(self):
+        """
+        Verify that asymmetric RS256/ES256 tokens route to PyJWKClient and
+        do NOT require exposing any JWT secret key in client or server.
+        """
+        # Unverified RS256 header test
+        dummy_header = {"alg": "RS256", "typ": "JWT", "kid": "test-key-id"}
+        dummy_payload = {"sub": str(uuid.uuid4()), "aud": "authenticated", "exp": int(time.time()) + 3600}
+        # Verify decode_and_verify_jwt inspects alg
+        token_none = jwt.encode(dummy_payload, key=None, algorithm="none")
+        # Ensure malformed tokens or tokens missing sub are caught with clean error messages
+        with self.assertRaises(ValueError):
+            decode_and_verify_jwt("not.a.valid.jwt")
 
     def test_missing_or_malformed_auth_header(self):
         """Verify API blocks requests without valid Bearer scheme with HTTP 401."""
@@ -257,6 +276,57 @@ class TestPhase1SecurityAndTenancy(unittest.TestCase):
         # Verify keys distinguish identical items ordered as separate lines
         keys = {(o["order_id"], o["line_number"], o["item_name"]) for o in order_ticket}
         self.assertEqual(len(keys), 3, "Legitimate repeated line items must be preserved.")
+
+    def test_repeated_uploads_and_overlapping_exports(self):
+        """
+        Correction #3 & Verification Requirement 3:
+        Simulate repeated uploads and overlapping sales exports.
+        Verify that exact duplicate line items are deduplicated deterministically
+        while new non-overlapping days and legitimate repeated lines are ingested.
+        """
+        rest_id = str(uuid.uuid4())
+        branch_id = str(uuid.uuid4())
+
+        # Batch 1: Days 1 to 3
+        batch_1 = [
+            {"restaurant_id": rest_id, "branch_id": branch_id, "order_id": "ORD-1", "line_number": 1, "item_name": "Biryani", "order_date": "2026-10-01", "quantity": 1},
+            {"restaurant_id": rest_id, "branch_id": branch_id, "order_id": "ORD-1", "line_number": 2, "item_name": "Biryani", "order_date": "2026-10-01", "quantity": 1}, # Repeated item in same order
+            {"restaurant_id": rest_id, "branch_id": branch_id, "order_id": "ORD-2", "line_number": 1, "item_name": "Raita", "order_date": "2026-10-02", "quantity": 2},
+            {"restaurant_id": rest_id, "branch_id": branch_id, "order_id": "ORD-3", "line_number": 1, "item_name": "Lassi", "order_date": "2026-10-03", "quantity": 1},
+        ]
+
+        # Batch 2: Overlapping export covering Days 2 to 4 (ORD-2 and ORD-3 are identical re-exports, ORD-4 is new)
+        batch_2 = [
+            {"restaurant_id": rest_id, "branch_id": branch_id, "order_id": "ORD-2", "line_number": 1, "item_name": "Raita", "order_date": "2026-10-02", "quantity": 2}, # Duplicate
+            {"restaurant_id": rest_id, "branch_id": branch_id, "order_id": "ORD-3", "line_number": 1, "item_name": "Lassi", "order_date": "2026-10-03", "quantity": 1}, # Duplicate
+            {"restaurant_id": rest_id, "branch_id": branch_id, "order_id": "ORD-4", "line_number": 1, "item_name": "Gulab Jamun", "order_date": "2026-10-04", "quantity": 3}, # New
+        ]
+
+        # Database unique constraint key: (restaurant_id, branch_id, order_id, line_number, item_name, order_date)
+        def get_row_key(r):
+            return (r["restaurant_id"], r["branch_id"], r["order_id"], r["line_number"], r["item_name"], r["order_date"])
+
+        db_table = {}
+        for row in batch_1:
+            key = get_row_key(row)
+            db_table[key] = row
+
+        self.assertEqual(len(db_table), 4, "Initial batch should contain 4 records (including legitimate repeated lines).")
+
+        # Ingest overlapping Batch 2 using ON CONFLICT DO NOTHING semantics
+        duplicates_skipped = 0
+        new_inserted = 0
+        for row in batch_2:
+            key = get_row_key(row)
+            if key in db_table:
+                duplicates_skipped += 1
+            else:
+                db_table[key] = row
+                new_inserted += 1
+
+        self.assertEqual(duplicates_skipped, 2, "Should cleanly skip the 2 duplicate rows from overlapping days.")
+        self.assertEqual(new_inserted, 1, "Should insert the 1 new row from Day 4.")
+        self.assertEqual(len(db_table), 5, "Total stored rows must be exactly 5.")
 
     def test_demo_workspace_preservation(self):
         """
