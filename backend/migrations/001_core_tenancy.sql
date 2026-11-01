@@ -55,6 +55,20 @@ BEGIN
     END IF;
 END $$;
 
+-- Backfill profiles for any users already present in auth.users prior to migration execution
+INSERT INTO public.profiles (id, email, full_name, avatar_url)
+SELECT 
+    id, 
+    email, 
+    COALESCE(raw_user_meta_data->>'full_name', email),
+    raw_user_meta_data->>'avatar_url'
+FROM auth.users
+ON CONFLICT (id) DO UPDATE SET
+    email = EXCLUDED.email,
+    full_name = COALESCE(EXCLUDED.full_name, public.profiles.full_name),
+    avatar_url = COALESCE(EXCLUDED.avatar_url, public.profiles.avatar_url),
+    updated_at = NOW();
+
 -- ------------------------------------------------------------------------------
 -- 2. RESTAURANTS TABLE (Organizations / Tenants)
 -- ------------------------------------------------------------------------------
