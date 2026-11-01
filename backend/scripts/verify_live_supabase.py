@@ -114,21 +114,21 @@ def provision_or_confirm_user(admin_client, email: str, full_name: str, password
 
 def assert_rls_violation(exception: Exception, context: str):
     """
-    Strictly verifies that an exception was caused by a PostgreSQL Row Level Security (RLS)
-    or insufficient-privilege policy violation (PostgreSQL 42501).
-    Any unexpected error (e.g., schema mismatch, connection error, syntax error) will fail the test.
+    Strictly verifies that an exception was caused by an explicit PostgreSQL
+    Row Level Security (RLS) policy violation.
+    Generic SQLSTATE 42501 or table-level insufficient_privilege is NOT accepted as proof of RLS.
+    Must contain explicit PostgreSQL RLS policy violation wording:
+    e.g. 'violates row-level security policy for table ...' or 'row-level security policy'
     """
     err_str = str(exception).lower()
-    is_rls = (
-        "row-level security" in err_str or
+    is_explicit_rls = (
         "violates row-level security policy" in err_str or
-        "insufficient_privilege" in err_str or
-        "42501" in err_str
+        "row-level security policy" in err_str
     )
-    if not is_rls:
+    if not is_explicit_rls:
         raise AssertionError(
-            f"SECURITY TEST FAILURE: Expected PostgreSQL RLS policy violation during {context}, "
-            f"but received unexpected error ({type(exception).__name__}): {exception}"
+            f"SECURITY TEST FAILURE: Expected explicit PostgreSQL Row Level Security policy violation during {context}, "
+            f"but received non-RLS or generic error ({type(exception).__name__}): {exception}"
         )
 
 
@@ -414,9 +414,10 @@ def main():
         print("\n[STEP 6/6] Verifying Storage Path-Based RLS Isolation...")
         dummy_file_content = b"order_id,item_name,quantity\n101,Butter Chicken,2\n"
         test_storage_path = f"{created_rest_id}/upload_check/sample.csv"
+        alpha_verified_uploaded_and_downloaded = False
 
         try:
-            # User Alpha (Owner) uploads to their own restaurant folder
+            # 1. User Alpha (Owner) uploads to their own restaurant folder
             client_a.storage.from_("restaurant-uploads").upload(
                 test_storage_path,
                 dummy_file_content,
@@ -424,21 +425,26 @@ def main():
             )
             print(f"  ✓ User Alpha (Owner) uploaded file to: {test_storage_path}")
 
-            # User Alpha (Owner) downloads their own file to verify read access & integrity
+            # 2. User Alpha (Owner) downloads their own file to verify read access & integrity
             downloaded_bytes = client_a.storage.from_("restaurant-uploads").download(test_storage_path)
-            if downloaded_bytes == dummy_file_content:
-                print(f"  ✓ User Alpha (Owner) downloaded own file successfully (100% byte integrity).")
-            else:
-                print(f"  ✗ User Alpha download byte integrity mismatch!")
-                sys.exit(1)
+            if downloaded_bytes != dummy_file_content:
+                raise AssertionError("User Alpha download byte integrity mismatch!")
 
-            # User Beta (Unauthorized) attempts to list User Alpha's folder
+            # Mark explicit proof of existence on disk
+            alpha_verified_uploaded_and_downloaded = True
+            print(f"  ✓ User Alpha (Owner) downloaded own file successfully (100% byte integrity verified).")
+
+            # 3. User Beta (Unauthorized) attempts to list User Alpha's folder
             unauth_list = client_b.storage.from_("restaurant-uploads").list(str(created_rest_id))
             if len(unauth_list) > 0:
                 print("  ✗ Storage RLS Failure: User Beta listed files from unauthorized folder!")
                 sys.exit(1)
             else:
                 print(f"  ✓ Storage RLS ENFORCED: User Beta listing of '{created_rest_id}' returned 0 files.")
+
+            # 4. Pre-condition assertion: Beta's denial test is ONLY valid if Alpha proved file exists
+            if not alpha_verified_uploaded_and_downloaded:
+                raise AssertionError("Invalid Test Condition: Cannot test User Beta storage denial because User Alpha upload/download was not confirmed!")
 
             # User Beta attempts to download User Alpha's file
             try:
@@ -447,14 +453,15 @@ def main():
                 sys.exit(1)
             except Exception as e:
                 assert_storage_denied(e, "User Beta direct file download")
-                print("  ✓ Storage RLS ENFORCED: User Beta direct download was blocked by Storage RLS.")
+                print("  ✓ Storage RLS ENFORCED: User Beta direct download was blocked by Storage RLS (File existence verified by Alpha).")
 
-            # User Alpha cleans up their test file
+            # 5. User Alpha cleans up their test file
             client_a.storage.from_("restaurant-uploads").remove([test_storage_path])
             test_storage_path = None
             print(f"  ✓ Test storage file cleaned up successfully.")
         except Exception as e:
             print(f"  [NOTE] Storage path test encountered: {str(e)}")
+            raise
 
     finally:
         # STRICT ISOLATED CLEANUP: Removes EXCLUSIVELY records and files created by this run
