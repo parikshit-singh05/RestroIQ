@@ -95,3 +95,4 @@ ON public.forecast_results(forecast_run_id, model_type);
 
 CREATE INDEX IF NOT EXISTS idx_model_evaluations_dates 
 ON public.model_evaluations(restaurant_id, evaluation_start_date, evaluation_end_date);
+

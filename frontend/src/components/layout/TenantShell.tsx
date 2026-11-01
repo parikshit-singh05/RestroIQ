@@ -19,7 +19,10 @@ import {
   LogOut,
   ChevronDown,
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  UtensilsCrossed,
+  Settings,
+  PlusCircle
 } from 'lucide-react'
 
 function cn(...inputs: ClassValue[]) {
@@ -107,6 +110,8 @@ export function TenantShell() {
         <TenantNavItem to="/app/forecasts" icon={LineChart} label="Demand Forecasts" />
         <TenantNavItem to="/app/inventory" icon={Package} label="Prep & Buffers" />
         <TenantNavItem to="/app/analytics" icon={BarChart3} label="Analytics" />
+        <TenantNavItem to="/app/menu" icon={UtensilsCrossed} label="Menu Intelligence" />
+        <TenantNavItem to="/app/branches" icon={Building2} label="Outlets & Branches" />
       </nav>
 
       <div className="px-4 mt-6 mb-2">
@@ -116,7 +121,8 @@ export function TenantShell() {
       </div>
 
       <nav className="space-y-1 px-3">
-        <TenantNavItem to="/app/onboarding" icon={Building2} label="Add Outlet / Branch" />
+        <TenantNavItem to="/app/settings" icon={Settings} label="Restaurant Settings" />
+        <TenantNavItem to="/app/onboarding" icon={PlusCircle} label="Add Outlet / Branch" />
       </nav>
 
       <div className="mt-auto px-4 pt-6">
@@ -276,6 +282,14 @@ export function TenantShell() {
                       Role: {userRole || 'owner'}
                     </div>
                   </div>
+
+                  <Link
+                    to="/app/settings"
+                    className="flex items-center gap-2 px-4 py-2 text-[12px] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-alt)] hover:text-[var(--color-text)]"
+                  >
+                    <Settings className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>Restaurant Settings & Team</span>
+                  </Link>
 
                   <Link
                     to="/overview"

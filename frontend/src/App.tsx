@@ -24,6 +24,11 @@ const Onboarding = lazy(() => import('./pages/tenant/Onboarding').then(m => ({ d
 const UploadPOS = lazy(() => import('./pages/tenant/UploadPOS').then(m => ({ default: m.UploadPOS })))
 const TenantOverview = lazy(() => import('./pages/tenant/TenantOverview').then(m => ({ default: m.TenantOverview })))
 const TenantForecasts = lazy(() => import('./pages/tenant/TenantForecasts').then(m => ({ default: m.TenantForecasts })))
+const TenantInventory = lazy(() => import('./pages/tenant/TenantInventory').then(m => ({ default: m.TenantInventory })))
+const TenantAnalytics = lazy(() => import('./pages/tenant/TenantAnalytics').then(m => ({ default: m.TenantAnalytics })))
+const TenantBranches = lazy(() => import('./pages/tenant/TenantBranches').then(m => ({ default: m.TenantBranches })))
+const TenantMenu = lazy(() => import('./pages/tenant/TenantMenu').then(m => ({ default: m.TenantMenu })))
+const TenantSettings = lazy(() => import('./pages/tenant/TenantSettings').then(m => ({ default: m.TenantSettings })))
 
 function PageFallback() {
   return (
@@ -51,6 +56,11 @@ function App() {
       '/app/overview': 'My Restaurant Operations',
       '/app/upload': 'Upload POS Sales Data',
       '/app/forecasts': 'Dynamic Demand Forecasts',
+      '/app/inventory': 'Kitchen Preparation & Buffers',
+      '/app/analytics': 'Operational Analytics & Trends',
+      '/app/branches': 'Outlets & Branches Management',
+      '/app/menu': 'Menu Intelligence & Catalog',
+      '/app/settings': 'Restaurant Settings & Team',
       '/app/onboarding': 'Restaurant Workspace Onboarding'
     }
 
@@ -91,8 +101,11 @@ function App() {
           <Route path="overview" element={<TenantOverview />} />
           <Route path="upload" element={<UploadPOS />} />
           <Route path="forecasts" element={<TenantForecasts />} />
-          <Route path="inventory" element={<TenantOverview />} />
-          <Route path="analytics" element={<TenantOverview />} />
+          <Route path="inventory" element={<TenantInventory />} />
+          <Route path="analytics" element={<TenantAnalytics />} />
+          <Route path="menu" element={<TenantMenu />} />
+          <Route path="branches" element={<TenantBranches />} />
+          <Route path="settings" element={<TenantSettings />} />
         </Route>
 
         {/* Kaggle Demo Workspace Shell (Public / Unauthenticated default) */}

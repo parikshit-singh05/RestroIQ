@@ -41,6 +41,7 @@ class BranchResponse(BaseModel):
     state: Optional[str] = None
     is_active: bool = True
     is_primary: bool = False
+    operating_days: str = "mon,tue,wed,thu,fri,sat,sun"
     created_at: Optional[str] = None
 
 class MemberInvite(BaseModel):
