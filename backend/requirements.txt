@@ -1,5 +1,9 @@
-﻿fastapi
+fastapi
 uvicorn
 pandas
 pydantic
 pydantic-settings
+pyjwt[crypto]
+supabase
+python-multipart
+openpyxl

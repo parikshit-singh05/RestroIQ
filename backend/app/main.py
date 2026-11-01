@@ -1,6 +1,7 @@
-﻿from fastapi import FastAPI
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.endpoints import router
+from app.api.endpoints import router as demo_router
+from app.api.endpoints_tenant import router as tenant_router
 from app.core.config import settings
 from app.services.data_service import data_service
 from contextlib import asynccontextmanager
@@ -39,7 +40,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(router, prefix=settings.API_V1_STR)
+app.include_router(demo_router, prefix=settings.API_V1_STR)
+app.include_router(tenant_router, prefix=settings.API_V1_STR)
 
 @app.get("/")
 def root():
