@@ -119,7 +119,10 @@ CREATE TABLE IF NOT EXISTS public.restaurant_branches (
     latitude NUMERIC(9, 6),
     longitude NUMERIC(9, 6),
     is_active BOOLEAN NOT NULL DEFAULT true,
+    introduced_date DATE DEFAULT NULL,
+    discontinued_date DATE DEFAULT NULL,
     is_primary BOOLEAN NOT NULL DEFAULT false,
+    operating_days VARCHAR(50) NOT NULL DEFAULT 'mon,tue,wed,thu,fri,sat,sun',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     CONSTRAINT uq_restaurant_branch_code UNIQUE (restaurant_id, branch_code)
@@ -344,6 +347,10 @@ CREATE TABLE IF NOT EXISTS public.model_evaluations (
     sufficiency_verdict VARCHAR(50) NOT NULL
         CHECK (sufficiency_verdict IN ('adequate', 'marginal', 'insufficient')),
     training_sample_count INT NOT NULL DEFAULT 0,
+    training_start_date DATE,
+    training_end_date DATE,
+    evaluation_start_date DATE,
+    evaluation_end_date DATE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -783,3 +790,31 @@ CREATE POLICY "Tenant admins can delete their uploads"
             'admin'
         )
     );
+
+
+-- ------------------------------------------------------------------------------
+-- BRANCH_CLOSURES TABLE (Phase 3)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.branch_closures (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    restaurant_id UUID NOT NULL REFERENCES public.restaurants(id) ON DELETE CASCADE,
+    branch_id UUID NOT NULL REFERENCES public.restaurant_branches(id) ON DELETE CASCADE,
+    closure_date DATE NOT NULL,
+    reason VARCHAR(255) DEFAULT 'Holiday/Maintenance',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CONSTRAINT uq_branch_closure UNIQUE (branch_id, closure_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_branch_closures_branch_date ON public.branch_closures(branch_id, closure_date);
+ALTER TABLE public.branch_closures ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Members can view branch closures" ON public.branch_closures;
+CREATE POLICY "Members can view branch closures"
+    ON public.branch_closures FOR SELECT
+    USING (public.user_has_restaurant_role(restaurant_id, 'analyst'));
+
+DROP POLICY IF EXISTS "Admins can manage branch closures" ON public.branch_closures;
+CREATE POLICY "Admins can manage branch closures"
+    ON public.branch_closures FOR ALL
+    USING (public.user_has_restaurant_role(restaurant_id, 'admin'))
+    WITH CHECK (public.user_has_restaurant_role(restaurant_id, 'admin'));

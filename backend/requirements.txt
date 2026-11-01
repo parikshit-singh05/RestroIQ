@@ -7,3 +7,4 @@ pyjwt[crypto]
 supabase
 python-multipart
 openpyxl
+scikit-learn

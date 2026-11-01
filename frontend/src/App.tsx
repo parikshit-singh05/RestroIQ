@@ -23,6 +23,7 @@ const ResetPassword = lazy(() => import('./pages/auth/ResetPassword').then(m => 
 const Onboarding = lazy(() => import('./pages/tenant/Onboarding').then(m => ({ default: m.Onboarding })))
 const UploadPOS = lazy(() => import('./pages/tenant/UploadPOS').then(m => ({ default: m.UploadPOS })))
 const TenantOverview = lazy(() => import('./pages/tenant/TenantOverview').then(m => ({ default: m.TenantOverview })))
+const TenantForecasts = lazy(() => import('./pages/tenant/TenantForecasts').then(m => ({ default: m.TenantForecasts })))
 
 function PageFallback() {
   return (
@@ -49,6 +50,7 @@ function App() {
       '/auth/reset-password': 'Password Recovery',
       '/app/overview': 'My Restaurant Operations',
       '/app/upload': 'Upload POS Sales Data',
+      '/app/forecasts': 'Dynamic Demand Forecasts',
       '/app/onboarding': 'Restaurant Workspace Onboarding'
     }
 
@@ -88,7 +90,7 @@ function App() {
           <Route index element={<Navigate to="/app/overview" replace />} />
           <Route path="overview" element={<TenantOverview />} />
           <Route path="upload" element={<UploadPOS />} />
-          <Route path="forecasts" element={<TenantOverview />} />
+          <Route path="forecasts" element={<TenantForecasts />} />
           <Route path="inventory" element={<TenantOverview />} />
           <Route path="analytics" element={<TenantOverview />} />
         </Route>
