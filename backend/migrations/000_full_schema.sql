@@ -753,6 +753,24 @@ CREATE POLICY "Tenant admins can upload files"
         )
     );
 
+DROP POLICY IF EXISTS "Tenant admins can update their uploads" ON storage.objects;
+CREATE POLICY "Tenant admins can update their uploads"
+    ON storage.objects FOR UPDATE
+    USING (
+        bucket_id = 'restaurant-uploads' AND
+        public.user_has_restaurant_role(
+            public.safe_cast_uuid((storage.foldername(name))[1]),
+            'admin'
+        )
+    )
+    WITH CHECK (
+        bucket_id = 'restaurant-uploads' AND
+        public.user_has_restaurant_role(
+            public.safe_cast_uuid((storage.foldername(name))[1]),
+            'admin'
+        )
+    );
+
 DROP POLICY IF EXISTS "Tenant admins can delete their uploads" ON storage.objects;
 CREATE POLICY "Tenant admins can delete their uploads"
     ON storage.objects FOR DELETE

@@ -33,18 +33,27 @@ def get_tenant_supabase_client(user_jwt: str) -> Client:
     Instantiates a tenant-scoped Supabase client operating strictly under
     the user's authenticated context.
     
-    All database operations execute with the user's Bearer token in the PostgREST
+    All database and storage operations execute with the user's Bearer token in the
     headers, guaranteeing that PostgreSQL Row Level Security (RLS) policies are
-    actively enforced at the database level and cannot be bypassed.
+    actively enforced at both PostgREST and Supabase Storage gateways.
     """
     if not settings.SUPABASE_URL or not settings.SUPABASE_KEY:
         raise ValueError("Supabase URL and Publishable Key must be configured in environment.")
 
-    # Create client using public anon key
-    client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+    # Initialize client passing user's Bearer token in default headers for all sub-services
+    from supabase.client import ClientOptions
+    options = ClientOptions(
+        headers={"Authorization": f"Bearer {user_jwt}"}
+    )
+    client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY, options=options)
     
-    # Inject user's authenticated JWT into PostgREST headers
+    # Explicitly configure Bearer auth on PostgREST engine
     client.postgrest.auth(user_jwt)
+    
+    # Explicitly configure Bearer auth on Storage client headers
+    if hasattr(client, "storage") and hasattr(client.storage, "_headers"):
+        client.storage._headers["Authorization"] = f"Bearer {user_jwt}"
+
     return client
 
 

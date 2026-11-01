@@ -79,6 +79,10 @@ class TestSupabaseLiveIntegration(unittest.TestCase):
         self.assertIn("authorization", client.postgrest.headers)
         self.assertEqual(client.postgrest.headers.get("authorization"), f"Bearer {dummy_jwt}")
 
+        # Verify the client's storage session also contains the user's auth header
+        storage_auth = getattr(client.storage, "_headers", {}).get("Authorization") or getattr(client.storage, "_headers", {}).get("authorization")
+        self.assertEqual(storage_auth, f"Bearer {dummy_jwt}")
+
     def test_live_auth_and_rls_isolation(self):
         """
         Live verification of PostgreSQL RLS policies:

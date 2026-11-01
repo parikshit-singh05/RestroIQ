@@ -421,7 +421,7 @@ def main():
             client_a.storage.from_("restaurant-uploads").upload(
                 test_storage_path,
                 dummy_file_content,
-                file_options={"content-type": "text/csv"}
+                file_options={"content-type": "text/csv", "upsert": "false"}
             )
             print(f"  ✓ User Alpha (Owner) uploaded file to: {test_storage_path}")
 
