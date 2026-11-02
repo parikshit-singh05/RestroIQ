@@ -56,7 +56,7 @@ def get_restaurant_details(
     """
     Fetches restaurant metadata. Requires active membership.
     """
-    res = tenant_service.get_restaurant(restaurant_id, context.user_id)
+    res = tenant_service.get_restaurant(restaurant_id, context.user_id, user_jwt=context.raw_jwt)
     if not res:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Restaurant not found.")
     return res
@@ -70,7 +70,7 @@ def list_branches(
     """
     Lists all branches for the authorized restaurant.
     """
-    return tenant_service.list_branches(restaurant_id)
+    return tenant_service.list_branches(restaurant_id, user_jwt=context.raw_jwt)
 
 
 @router.post("/restaurants/{restaurant_id}/branches", response_model=BranchResponse, status_code=status.HTTP_201_CREATED)
@@ -83,7 +83,7 @@ def create_branch(
     Adds a new branch outlet. Requires 'admin' or 'owner' role.
     """
     try:
-        return tenant_service.create_branch(restaurant_id, data)
+        return tenant_service.create_branch(restaurant_id, data, user_jwt=context.raw_jwt)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
@@ -96,7 +96,7 @@ def list_members(
     """
     Lists members and their assigned roles in this restaurant.
     """
-    return tenant_service.list_members(restaurant_id)
+    return tenant_service.list_members(restaurant_id, user_jwt=context.raw_jwt)
 
 
 @router.post("/restaurants/{restaurant_id}/members", response_model=MemberResponse, status_code=status.HTTP_201_CREATED)
@@ -109,7 +109,7 @@ def add_member(
     Invites a new member with role 'admin' or 'analyst'. Requires 'admin' or 'owner'.
     """
     try:
-        return tenant_service.add_member(restaurant_id, invite, actor_id=context.user_id)
+        return tenant_service.add_member(restaurant_id, invite, actor_id=context.user_id, user_jwt=context.raw_jwt)
     except PermissionError as pe:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(pe))
     except ValueError as ve:
@@ -126,7 +126,7 @@ def remove_member(
     Removes a member from the restaurant. Requires 'admin' or 'owner'.
     """
     try:
-        tenant_service.remove_member(restaurant_id, membership_id, actor_id=context.user_id)
+        tenant_service.remove_member(restaurant_id, membership_id, actor_id=context.user_id, user_jwt=context.raw_jwt)
     except PermissionError as pe:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(pe))
     except KeyError:
@@ -143,7 +143,7 @@ def get_settings(
     """
     Retrieves operational preferences (prep buffer, frequency).
     """
-    return tenant_service.get_settings(restaurant_id)
+    return tenant_service.get_settings(restaurant_id, user_jwt=context.raw_jwt)
 
 
 @router.put("/restaurants/{restaurant_id}/settings", response_model=RestaurantSettingsResponse)
@@ -156,7 +156,7 @@ def update_settings(
     Updates operational preferences. Requires 'admin' or 'owner'.
     """
     try:
-        return tenant_service.update_settings(restaurant_id, data, actor_id=context.user_id)
+        return tenant_service.update_settings(restaurant_id, data, actor_id=context.user_id, user_jwt=context.raw_jwt)
     except ValueError as ve:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
     except PermissionError as pe:

@@ -63,8 +63,12 @@ def require_tenant_access(required_role: str = "analyst") -> Callable:
         user_id = current_user["id"]
         user_email = current_user["email"]
 
-        # Resolve verified membership
-        user_role = tenant_service.resolve_user_membership(restaurant_id, user_id)
+        # Resolve verified membership via Supabase restaurant_memberships or local repository
+        user_role = tenant_service.resolve_user_membership(
+            restaurant_id,
+            user_id,
+            user_jwt=current_user.get("raw_jwt")
+        )
         if not user_role:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

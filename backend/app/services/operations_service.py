@@ -688,7 +688,19 @@ class OperationsService:
                     "category": data.category.strip() or "General"
                 }).execute()
             except Exception as e:
+                if not settings.allow_in_memory_fallback:
+                    from fastapi import HTTPException, status
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail=f"Menu item creation failed in database: {e}"
+                    )
                 print(f"[OperationsService] Supabase menu_items insert note: {e}")
+        elif not settings.allow_in_memory_fallback:
+            from fastapi import HTTPException, status
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Supabase credentials and user authentication token required in production."
+            )
 
         # In-memory store
         items = self._menu_catalog[restaurant_id]
@@ -760,7 +772,19 @@ class OperationsService:
                     "discontinued_date": target.get("discontinued_date")
                 }).eq("restaurant_id", restaurant_id).eq("item_name", item_name).execute()
             except Exception as e:
+                if not settings.allow_in_memory_fallback:
+                    from fastapi import HTTPException, status
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail=f"Menu item update failed in database: {e}"
+                    )
                 print(f"[OperationsService] Supabase menu_items update note: {e}")
+        elif not settings.allow_in_memory_fallback:
+            from fastapi import HTTPException, status
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Supabase credentials and user authentication token required in production."
+            )
 
         return MenuItemDetail(
             id=target.get("id"),
@@ -1007,7 +1031,19 @@ class OperationsService:
                 client = get_tenant_supabase_client(user_jwt)
                 client.table("restaurant_memberships").update({"role": normalized_new_role}).eq("id", membership_id).execute()
             except Exception as e:
+                if not settings.allow_in_memory_fallback:
+                    from fastapi import HTTPException, status
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail=f"Membership role update failed in database: {e}"
+                    )
                 print(f"[OperationsService] Supabase member role update note: {e}")
+        elif not settings.allow_in_memory_fallback:
+            from fastapi import HTTPException, status
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Supabase credentials and user authentication token required in production."
+            )
 
         return target
 

@@ -530,6 +530,32 @@ class TestProductionEndToEndWorkflow(unittest.TestCase):
         ).json()
         self.assertGreater(alpha_summary_after.get("total_line_items", 0), 100)
 
+    def test_11_production_environment_blocks_in_memory_fallback(self):
+        """
+        Production Hardening Verification:
+        In production, in-memory tenant fallback is strictly disabled.
+        If Supabase is unreachable or authentication fails, operations must
+        fail safely with HTTP 503 instead of silently storing tenant data in memory.
+        """
+        orig_env = settings.ENVIRONMENT
+        try:
+            settings.ENVIRONMENT = "production"
+            self.assertTrue(settings.is_production)
+            self.assertFalse(settings.allow_in_memory_fallback)
+
+            # Attempt creating a restaurant with an invalid Supabase token under production settings
+            with self.assertRaises(Exception) as ctx:
+                tenant_service.create_restaurant(
+                    user_id=str(uuid.uuid4()),
+                    user_email="prod_failure_test@restroiq.com",
+                    data=RestaurantCreate(name="Failing Prod Restaurant"),
+                    user_jwt="invalid.fake.jwt"
+                )
+            # Must raise 503 Service Unavailable, NEVER silently succeed in memory
+            self.assertIn("503", str(ctx.exception))
+        finally:
+            settings.ENVIRONMENT = orig_env
+
 
 if __name__ == "__main__":
     unittest.main()

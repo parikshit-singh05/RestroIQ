@@ -842,7 +842,19 @@ class ForecastingService:
                 for c_idx in range(0, len(db_results), chunk_size):
                     client.table("forecast_results").insert(db_results[c_idx:c_idx + chunk_size]).execute()
             except Exception as persist_err:
+                if not settings.allow_in_memory_fallback:
+                    from fastapi import HTTPException, status
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail=f"Forecast database persistence failed and in-memory fallback is disabled in production: {persist_err}"
+                    )
                 print(f"[ForecastingService] Supabase persistence note: {persist_err}; local store active.")
+        elif not settings.allow_in_memory_fallback:
+            from fastapi import HTTPException, status
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Supabase credentials and user authentication token required in production."
+            )
 
         # Local fallback store
         self._jobs[restaurant_id].append(job_record)

@@ -1005,7 +1005,19 @@ class IngestionService:
                         on_conflict="restaurant_id,branch_id,order_id,line_number,item_name,order_date"
                     ).execute()
             except Exception as e:
+                if not settings.allow_in_memory_fallback:
+                    from fastapi import HTTPException, status
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail=f"Database order persistence failed and in-memory fallback is disabled in production: {e}"
+                    )
                 print(f"[IngestionService] Note: Supabase persistence failed ({e}); local store active.")
+        elif not settings.allow_in_memory_fallback:
+            from fastapi import HTTPException, status
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Supabase credentials and user authentication token required in production."
+            )
         else:
             upload_record["status"] = "completed"
 

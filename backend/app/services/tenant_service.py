@@ -2,8 +2,10 @@ import re
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
+from fastapi import HTTPException, status
+
 from app.core.config import settings
-from app.core.supabase import get_tenant_supabase_client, get_admin_supabase_client
+from app.core.supabase import get_tenant_supabase_client
 from app.schemas.tenant_schemas import (
     RestaurantCreate, RestaurantResponse,
     BranchCreate, BranchResponse,
@@ -27,8 +29,9 @@ def has_sufficient_role(user_role: str, required_role: str) -> bool:
 class TenantService:
     """
     Manages multi-tenant organizations, branches, and memberships.
-    Supports both direct Supabase execution with RLS enforcement
-    and an in-memory repository for offline unit/security tests.
+    In production (settings.allow_in_memory_fallback == False), all operations execute
+    strictly against Supabase PostgreSQL with verified RLS enforcement.
+    In test / development configuration, in-memory stores support isolated unit tests.
     """
     def __init__(self):
         # In-memory store for offline tests and fast resolution
@@ -72,9 +75,8 @@ class TenantService:
             "created_at": now_str,
             "updated_at": now_str
         }
-        self._restaurants[restaurant_id] = rest_record
 
-        # Creator automatically becomes 'owner'
+        # Creator automatically becomes 'owner' in restaurant_memberships
         membership_id = str(uuid.uuid4())
         owner_membership = {
             "id": membership_id,
@@ -83,7 +85,6 @@ class TenantService:
             "role": "owner",
             "created_at": now_str
         }
-        self._memberships[restaurant_id] = [owner_membership]
 
         # Create default primary branch
         branch_id = str(uuid.uuid4())
@@ -96,30 +97,46 @@ class TenantService:
             "state": "Karnataka",
             "is_active": True,
             "is_primary": True,
+            "operating_days": "mon,tue,wed,thu,fri,sat,sun",
             "created_at": now_str
         }
-        self._branches[restaurant_id] = [default_branch]
 
         # Create default operational settings
-        self._settings[restaurant_id] = {
+        default_settings = {
             "restaurant_id": restaurant_id,
             "default_prep_buffer": 10,
             "default_forecasting_frequency": "daily",
             "auto_forecast_on_upload": True,
+            "timezone": data.timezone or "Asia/Kolkata",
             "updated_at": now_str
         }
 
-        # If live Supabase credentials configured and user_jwt present, replicate to Supabase
+        # Primary live Supabase write
         if settings.SUPABASE_URL and settings.SUPABASE_KEY and user_jwt:
             try:
                 client = get_tenant_supabase_client(user_jwt)
                 client.table("restaurants").insert(rest_record).execute()
                 client.table("restaurant_memberships").insert(owner_membership).execute()
                 client.table("restaurant_branches").insert(default_branch).execute()
-                client.table("restaurant_settings").insert(self._settings[restaurant_id]).execute()
+                client.table("restaurant_settings").insert(default_settings).execute()
             except Exception as e:
-                # Log but do not block local state
+                if not settings.allow_in_memory_fallback:
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail=f"Database write failed: {e}"
+                    )
                 print(f"[TenantService] Note: Supabase write failed ({e}); local store active.")
+        elif not settings.allow_in_memory_fallback:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Supabase credentials and user authentication token required in production."
+            )
+
+        # In-memory store for fast local resolution in dev/test
+        self._restaurants[restaurant_id] = rest_record
+        self._memberships[restaurant_id] = [owner_membership]
+        self._branches[restaurant_id] = [default_branch]
+        self._settings[restaurant_id] = default_settings
 
         return RestaurantResponse(
             id=restaurant_id,
@@ -135,7 +152,36 @@ class TenantService:
 
     def list_user_restaurants(self, user_id: str, user_jwt: Optional[str] = None) -> List[RestaurantResponse]:
         results = []
-        # First check in-memory store
+
+        # If in production, query Supabase directly under user's JWT
+        if not settings.allow_in_memory_fallback:
+            if not user_jwt:
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication token required.")
+            try:
+                client = get_tenant_supabase_client(user_jwt)
+                res = client.table("restaurants").select("*, restaurant_memberships(role)").execute()
+                for row in res.data or []:
+                    memberships = row.get("restaurant_memberships") or []
+                    role = memberships[0]["role"] if memberships else "analyst"
+                    results.append(RestaurantResponse(
+                        id=row["id"],
+                        name=row["name"],
+                        slug=row["slug"],
+                        currency=row.get("currency", "INR"),
+                        currency_symbol=row.get("currency_symbol", "₹"),
+                        timezone=row.get("timezone", "Asia/Kolkata"),
+                        operational_model=row.get("operational_model", "dine_in_and_delivery"),
+                        user_role=role,
+                        created_at=row.get("created_at")
+                    ))
+                return results
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=f"Database query error: {e}"
+                )
+
+        # In test / development mode: check in-memory store first
         for rest_id, members in self._memberships.items():
             for m in members:
                 if m["user_id"] == user_id:
@@ -153,11 +199,10 @@ class TenantService:
                             created_at=rest["created_at"]
                         ))
 
-        # Check Supabase if configured and user_jwt provided
+        # Supabase fallback in dev/test if local store is empty
         if not results and settings.SUPABASE_URL and settings.SUPABASE_KEY and user_jwt:
             try:
                 client = get_tenant_supabase_client(user_jwt)
-                # Queries execute under user's JWT, leveraging RLS
                 res = client.table("restaurants").select("*, restaurant_memberships(role)").execute()
                 for row in res.data or []:
                     memberships = row.get("restaurant_memberships") or []
@@ -178,41 +223,101 @@ class TenantService:
 
         return results
 
-    def get_restaurant(self, restaurant_id: str, user_id: str) -> Optional[RestaurantResponse]:
+    def get_restaurant(self, restaurant_id: str, user_id: str, user_jwt: Optional[str] = None) -> Optional[RestaurantResponse]:
         members = self._memberships.get(restaurant_id, [])
         user_role = next((m["role"] for m in members if m["user_id"] == user_id), None)
+
+        if not user_role and user_jwt and settings.SUPABASE_URL and settings.SUPABASE_KEY:
+            try:
+                client = get_tenant_supabase_client(user_jwt)
+                m_res = client.table("restaurant_memberships").select("role").eq("restaurant_id", restaurant_id).eq("user_id", user_id).execute()
+                if m_res.data:
+                    user_role = m_res.data[0]["role"]
+            except Exception as e:
+                if not settings.allow_in_memory_fallback:
+                    raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Database query error: {e}")
+
         if not user_role:
             return None
+
         rest = self._restaurants.get(restaurant_id)
+        if not rest and user_jwt and settings.SUPABASE_URL and settings.SUPABASE_KEY:
+            try:
+                client = get_tenant_supabase_client(user_jwt)
+                r_res = client.table("restaurants").select("*").eq("id", restaurant_id).single().execute()
+                if r_res.data:
+                    rest = r_res.data
+            except Exception as e:
+                if not settings.allow_in_memory_fallback:
+                    raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Database query error: {e}")
+
         if not rest:
             return None
+
         return RestaurantResponse(
             id=rest["id"],
             name=rest["name"],
             slug=rest["slug"],
-            currency=rest["currency"],
-            currency_symbol=rest["currency_symbol"],
-            timezone=rest["timezone"],
-            operational_model=rest["operational_model"],
+            currency=rest.get("currency", "INR"),
+            currency_symbol=rest.get("currency_symbol", "₹"),
+            timezone=rest.get("timezone", "Asia/Kolkata"),
+            operational_model=rest.get("operational_model", "dine_in_and_delivery"),
             user_role=user_role,
-            created_at=rest["created_at"]
+            created_at=rest.get("created_at")
         )
 
-    def resolve_user_membership(self, restaurant_id: str, user_id: str) -> Optional[str]:
-        """Returns the user's role ('owner', 'admin', 'analyst') or None."""
+    def resolve_user_membership(self, restaurant_id: str, user_id: str, user_jwt: Optional[str] = None) -> Optional[str]:
+        """
+        Returns the user's role ('owner', 'admin', 'analyst') from restaurant_memberships or None.
+        """
+        # First check local cache in test/development
         members = self._memberships.get(restaurant_id, [])
         for m in members:
             if m["user_id"] == user_id:
                 return m["role"]
+
+        # Check Supabase restaurant_memberships under verified user JWT
+        if settings.SUPABASE_URL and settings.SUPABASE_KEY and user_jwt:
+            try:
+                client = get_tenant_supabase_client(user_jwt)
+                res = client.table("restaurant_memberships").select("role").eq("restaurant_id", restaurant_id).eq("user_id", user_id).execute()
+                if res.data:
+                    role = res.data[0]["role"]
+                    # Cache in local state
+                    self._memberships.setdefault(restaurant_id, []).append({
+                        "id": str(uuid.uuid4()),
+                        "restaurant_id": restaurant_id,
+                        "user_id": user_id,
+                        "role": role,
+                        "created_at": datetime.now(timezone.utc).isoformat()
+                    })
+                    return role
+            except Exception as e:
+                print(f"[TenantService] resolve_user_membership error: {e}")
+                if not settings.allow_in_memory_fallback:
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail=f"Database error resolving user membership: {e}"
+                    )
+
         return None
 
-    def list_branches(self, restaurant_id: str) -> List[BranchResponse]:
+    def list_branches(self, restaurant_id: str, user_jwt: Optional[str] = None) -> List[BranchResponse]:
+        if not settings.allow_in_memory_fallback:
+            if not user_jwt:
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication token required.")
+            try:
+                client = get_tenant_supabase_client(user_jwt)
+                res = client.table("restaurant_branches").select("*").eq("restaurant_id", restaurant_id).execute()
+                return [BranchResponse(**b) for b in (res.data or [])]
+            except Exception as e:
+                raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Database query error: {e}")
+
         branches = self._branches.get(restaurant_id, [])
         return [BranchResponse(**b) for b in branches]
 
-    def create_branch(self, restaurant_id: str, data: BranchCreate) -> BranchResponse:
+    def create_branch(self, restaurant_id: str, data: BranchCreate, user_jwt: Optional[str] = None) -> BranchResponse:
         branches = self._branches.setdefault(restaurant_id, [])
-        # Check uniqueness of branch_code within restaurant
         if any(b["branch_code"].upper() == data.branch_code.upper() for b in branches):
             raise ValueError(f"Branch code '{data.branch_code}' already exists in this restaurant.")
 
@@ -230,13 +335,51 @@ class TenantService:
             "operating_days": getattr(data, "operating_days", None) or "mon,tue,wed,thu,fri,sat,sun",
             "created_at": now_str
         }
+
+        if settings.SUPABASE_URL and settings.SUPABASE_KEY and user_jwt:
+            try:
+                client = get_tenant_supabase_client(user_jwt)
+                if data.is_primary:
+                    client.table("restaurant_branches").update({"is_primary": False}).eq("restaurant_id", restaurant_id).execute()
+                client.table("restaurant_branches").insert(new_branch).execute()
+            except Exception as e:
+                if not settings.allow_in_memory_fallback:
+                    raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Database write error: {e}")
+                print(f"[TenantService] Note: Supabase branch insert failed ({e}); local store active.")
+        elif not settings.allow_in_memory_fallback:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database connection required in production.")
+
         if data.is_primary:
             for b in branches:
                 b["is_primary"] = False
         branches.append(new_branch)
         return BranchResponse(**new_branch)
 
-    def list_members(self, restaurant_id: str) -> List[MemberResponse]:
+    def list_members(self, restaurant_id: str, user_jwt: Optional[str] = None) -> List[MemberResponse]:
+        if settings.SUPABASE_URL and settings.SUPABASE_KEY and user_jwt:
+            try:
+                client = get_tenant_supabase_client(user_jwt)
+                # Query established restaurant_memberships and profiles tables
+                res = client.table("restaurant_memberships").select("id, restaurant_id, user_id, role, created_at, profiles(email, full_name)").eq("restaurant_id", restaurant_id).execute()
+                output = []
+                for m in (res.data or []):
+                    prof = m.get("profiles") or {}
+                    output.append(MemberResponse(
+                        id=m["id"],
+                        restaurant_id=restaurant_id,
+                        user_id=m["user_id"],
+                        email=prof.get("email"),
+                        full_name=prof.get("full_name"),
+                        role=m["role"],
+                        created_at=m.get("created_at")
+                    ))
+                return output
+            except Exception as e:
+                if not settings.allow_in_memory_fallback:
+                    raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Database query error: {e}")
+                print(f"[TenantService] Supabase list_members note: {e}")
+
+        # In-memory fallback in dev/test
         members = self._memberships.get(restaurant_id, [])
         output = []
         for m in members:
@@ -252,21 +395,35 @@ class TenantService:
             ))
         return output
 
-    def add_member(self, restaurant_id: str, invite: MemberInvite, actor_id: str) -> MemberResponse:
-        actor_role = self.resolve_user_membership(restaurant_id, actor_id)
+    def add_member(self, restaurant_id: str, invite: MemberInvite, actor_id: str, user_jwt: Optional[str] = None) -> MemberResponse:
+        actor_role = self.resolve_user_membership(restaurant_id, actor_id, user_jwt=user_jwt)
         if not actor_role or not has_sufficient_role(actor_role, "admin"):
             raise PermissionError("Only admins or owners can add members.")
 
         if invite.role.lower() == "owner" and actor_role != "owner":
             raise PermissionError("Only current owners can grant owner privileges.")
 
-        # Find existing user profile by email if registered, else generate deterministic placeholder ID
-        existing_user = next((u for u in self._users.values() if u.get("email") == invite.email.lower()), None)
-        if existing_user:
-            invited_user_id = existing_user["id"]
-        else:
-            invited_user_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, invite.email.lower()))
-            self.register_user_profile(invited_user_id, invite.email.lower())
+        # Find existing profile
+        invited_user_id = None
+        user_full_name = invite.email.split("@")[0]
+
+        if settings.SUPABASE_URL and settings.SUPABASE_KEY and user_jwt:
+            try:
+                client = get_tenant_supabase_client(user_jwt)
+                p_res = client.table("profiles").select("id, email, full_name").eq("email", invite.email.lower()).execute()
+                if p_res.data:
+                    invited_user_id = p_res.data[0]["id"]
+                    user_full_name = p_res.data[0].get("full_name") or user_full_name
+            except Exception:
+                pass
+
+        if not invited_user_id:
+            existing_user = next((u for u in self._users.values() if u.get("email") == invite.email.lower()), None)
+            if existing_user:
+                invited_user_id = existing_user["id"]
+            else:
+                invited_user_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, invite.email.lower()))
+                self.register_user_profile(invited_user_id, invite.email.lower())
 
         members = self._memberships.setdefault(restaurant_id, [])
         if any(m["user_id"] == invited_user_id for m in members):
@@ -281,6 +438,18 @@ class TenantService:
             "role": invite.role.lower(),
             "created_at": now_str
         }
+
+        if settings.SUPABASE_URL and settings.SUPABASE_KEY and user_jwt:
+            try:
+                client = get_tenant_supabase_client(user_jwt)
+                client.table("restaurant_memberships").insert(new_membership).execute()
+            except Exception as e:
+                if not settings.allow_in_memory_fallback:
+                    raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Database write error: {e}")
+                print(f"[TenantService] Note: Supabase membership insert failed ({e}); local store active.")
+        elif not settings.allow_in_memory_fallback:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database connection required in production.")
+
         members.append(new_membership)
 
         return MemberResponse(
@@ -288,18 +457,28 @@ class TenantService:
             restaurant_id=restaurant_id,
             user_id=invited_user_id,
             email=invite.email.lower(),
-            full_name=invite.email.split("@")[0],
+            full_name=user_full_name,
             role=invite.role.lower(),
             created_at=now_str
         )
 
-    def remove_member(self, restaurant_id: str, membership_id: str, actor_id: str):
-        actor_role = self.resolve_user_membership(restaurant_id, actor_id)
+    def remove_member(self, restaurant_id: str, membership_id: str, actor_id: str, user_jwt: Optional[str] = None):
+        actor_role = self.resolve_user_membership(restaurant_id, actor_id, user_jwt=user_jwt)
         if not actor_role or not has_sufficient_role(actor_role, "admin"):
             raise PermissionError("Only admins or owners can remove members.")
 
         members = self._memberships.get(restaurant_id, [])
         target = next((m for m in members if m["id"] == membership_id), None)
+
+        if not target and user_jwt and settings.SUPABASE_URL and settings.SUPABASE_KEY:
+            try:
+                client = get_tenant_supabase_client(user_jwt)
+                m_res = client.table("restaurant_memberships").select("*").eq("id", membership_id).single().execute()
+                if m_res.data:
+                    target = m_res.data
+            except Exception:
+                pass
+
         if not target:
             raise KeyError("Membership not found.")
 
@@ -312,9 +491,30 @@ class TenantService:
             if owner_count <= 1:
                 raise ValueError("Cannot remove the only owner of a restaurant.")
 
+        if settings.SUPABASE_URL and settings.SUPABASE_KEY and user_jwt:
+            try:
+                client = get_tenant_supabase_client(user_jwt)
+                client.table("restaurant_memberships").delete().eq("id", membership_id).execute()
+            except Exception as e:
+                if not settings.allow_in_memory_fallback:
+                    raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Database delete error: {e}")
+                print(f"[TenantService] Note: Supabase membership delete failed ({e}); local store active.")
+        elif not settings.allow_in_memory_fallback:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database connection required in production.")
+
         self._memberships[restaurant_id] = [m for m in members if m["id"] != membership_id]
 
-    def get_settings(self, restaurant_id: str) -> RestaurantSettingsResponse:
+    def get_settings(self, restaurant_id: str, user_jwt: Optional[str] = None) -> RestaurantSettingsResponse:
+        if settings.SUPABASE_URL and settings.SUPABASE_KEY and user_jwt:
+            try:
+                client = get_tenant_supabase_client(user_jwt)
+                res = client.table("restaurant_settings").select("*").eq("restaurant_id", restaurant_id).single().execute()
+                if res.data:
+                    return RestaurantSettingsResponse(**res.data)
+            except Exception as e:
+                if not settings.allow_in_memory_fallback:
+                    raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Database query error: {e}")
+
         st = self._settings.get(restaurant_id, {
             "restaurant_id": restaurant_id,
             "default_prep_buffer": 10,
@@ -323,8 +523,8 @@ class TenantService:
         })
         return RestaurantSettingsResponse(**st)
 
-    def update_settings(self, restaurant_id: str, data: RestaurantSettingsUpdate, actor_id: str) -> RestaurantSettingsResponse:
-        actor_role = self.resolve_user_membership(restaurant_id, actor_id)
+    def update_settings(self, restaurant_id: str, data: RestaurantSettingsUpdate, actor_id: str, user_jwt: Optional[str] = None) -> RestaurantSettingsResponse:
+        actor_role = self.resolve_user_membership(restaurant_id, actor_id, user_jwt=user_jwt)
         if not actor_role or not has_sufficient_role(actor_role, "admin"):
             raise PermissionError("Only admins or owners can modify operational settings.")
 
@@ -346,6 +546,18 @@ class TenantService:
             current["auto_forecast_on_upload"] = data.auto_forecast_on_upload
 
         current["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+        if settings.SUPABASE_URL and settings.SUPABASE_KEY and user_jwt:
+            try:
+                client = get_tenant_supabase_client(user_jwt)
+                client.table("restaurant_settings").upsert(current).execute()
+            except Exception as e:
+                if not settings.allow_in_memory_fallback:
+                    raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Database update error: {e}")
+                print(f"[TenantService] Note: Supabase settings update failed ({e}); local store active.")
+        elif not settings.allow_in_memory_fallback:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database connection required in production.")
+
         return RestaurantSettingsResponse(**current)
 
     def reset_for_testing(self):

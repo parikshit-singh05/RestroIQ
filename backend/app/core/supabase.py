@@ -11,18 +11,19 @@ _jwks_client: Optional[PyJWKClient] = None
 
 def get_admin_supabase_client() -> Optional[Client]:
     """
-    Returns an administrative Supabase client using the SERVICE_ROLE_KEY.
+    Returns an administrative Supabase client using the SUPABASE_SECRET_KEY.
     WARNING: Bypasses Row Level Security (RLS).
     MUST NOT be used for tenant-scoped operations. Reserved strictly for
     initial administrative provisioning or system migration scripts.
     """
     global _admin_client
-    if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_ROLE_KEY:
+    secret_key = settings.SUPABASE_SECRET_KEY or settings.SUPABASE_SERVICE_ROLE_KEY
+    if not settings.SUPABASE_URL or not secret_key:
         return None
     if _admin_client is None:
         _admin_client = create_client(
             settings.SUPABASE_URL,
-            settings.SUPABASE_SERVICE_ROLE_KEY
+            secret_key
         )
     return _admin_client
 
