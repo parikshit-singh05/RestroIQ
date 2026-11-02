@@ -3,6 +3,7 @@ node_modules/
 dist/
 .env
 .env.local
+.env.*.local
 
 # Python & Backend
 __pycache__/
@@ -11,6 +12,9 @@ __pycache__/
 venv/
 env/
 .venv/
+
+# Scratch & Temporary
+dataset/
 
 # OS Generated
 .DS_Store

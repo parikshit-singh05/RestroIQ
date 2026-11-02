@@ -1,8 +1,10 @@
-﻿import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useEffect, lazy, Suspense } from 'react'
 import { Shell } from './components/layout/Shell'
+import { TenantShell } from './components/layout/TenantShell'
+import { ProtectedRoute } from './components/auth/ProtectedRoute'
 
-// Route-level code-splitting for performance and reduced initial bundle size
+// Demo workspace pages (lazy-loaded)
 const Overview = lazy(() => import('./pages/Overview').then(m => ({ default: m.Overview })))
 const Forecasts = lazy(() => import('./pages/Forecasts').then(m => ({ default: m.Forecasts })))
 const Inventory = lazy(() => import('./pages/Inventory').then(m => ({ default: m.Inventory })))
@@ -11,6 +13,22 @@ const Centers = lazy(() => import('./pages/Centers').then(m => ({ default: m.Cen
 const CenterDetail = lazy(() => import('./pages/CenterDetail').then(m => ({ default: m.CenterDetail })))
 const Meals = lazy(() => import('./pages/Meals').then(m => ({ default: m.Meals })))
 const MealDetail = lazy(() => import('./pages/MealDetail').then(m => ({ default: m.MealDetail })))
+
+// Auth pages
+const Login = lazy(() => import('./pages/auth/Login').then(m => ({ default: m.Login })))
+const Signup = lazy(() => import('./pages/auth/Signup').then(m => ({ default: m.Signup })))
+const ResetPassword = lazy(() => import('./pages/auth/ResetPassword').then(m => ({ default: m.ResetPassword })))
+
+// Tenant SaaS pages
+const Onboarding = lazy(() => import('./pages/tenant/Onboarding').then(m => ({ default: m.Onboarding })))
+const UploadPOS = lazy(() => import('./pages/tenant/UploadPOS').then(m => ({ default: m.UploadPOS })))
+const TenantOverview = lazy(() => import('./pages/tenant/TenantOverview').then(m => ({ default: m.TenantOverview })))
+const TenantForecasts = lazy(() => import('./pages/tenant/TenantForecasts').then(m => ({ default: m.TenantForecasts })))
+const TenantInventory = lazy(() => import('./pages/tenant/TenantInventory').then(m => ({ default: m.TenantInventory })))
+const TenantAnalytics = lazy(() => import('./pages/tenant/TenantAnalytics').then(m => ({ default: m.TenantAnalytics })))
+const TenantBranches = lazy(() => import('./pages/tenant/TenantBranches').then(m => ({ default: m.TenantBranches })))
+const TenantMenu = lazy(() => import('./pages/tenant/TenantMenu').then(m => ({ default: m.TenantMenu })))
+const TenantSettings = lazy(() => import('./pages/tenant/TenantSettings').then(m => ({ default: m.TenantSettings })))
 
 function PageFallback() {
   return (
@@ -26,12 +44,24 @@ function App() {
 
   useEffect(() => {
     const routeTitles: Record<string, string> = {
-      '/overview': 'Overview',
-      '/forecasts': 'Forecasts',
-      '/inventory': 'Inventory',
-      '/analytics': 'Analytics',
-      '/centers': 'Centers',
-      '/meals': 'Meals'
+      '/overview': 'Kaggle Benchmark Overview',
+      '/forecasts': 'Kaggle Benchmark Forecasts',
+      '/inventory': 'Kaggle Benchmark Inventory',
+      '/analytics': 'Kaggle Benchmark Analytics',
+      '/centers': 'Fulfillment Centers',
+      '/meals': 'Meal Master',
+      '/auth/login': 'Sign In',
+      '/auth/signup': 'Restaurant Registration',
+      '/auth/reset-password': 'Password Recovery',
+      '/app/overview': 'My Restaurant Operations',
+      '/app/upload': 'Upload POS Sales Data',
+      '/app/forecasts': 'Dynamic Demand Forecasts',
+      '/app/inventory': 'Kitchen Preparation & Buffers',
+      '/app/analytics': 'Operational Analytics & Trends',
+      '/app/branches': 'Outlets & Branches Management',
+      '/app/menu': 'Menu Intelligence & Catalog',
+      '/app/settings': 'Restaurant Settings & Team',
+      '/app/onboarding': 'Restaurant Workspace Onboarding'
     }
 
     let pageTitle = 'RestroIQ'
@@ -40,58 +70,61 @@ function App() {
     } else if (location.pathname.startsWith('/meals/')) {
       pageTitle = 'Meal Detail'
     } else {
-      pageTitle = routeTitles[location.pathname] || 'Demand Intelligence'
+      pageTitle = routeTitles[location.pathname] || 'Restaurant Demand Intelligence'
     }
 
     document.title = `RestroIQ | ${pageTitle}`
   }, [location])
 
   return (
-    <Routes>
-      <Route path="/" element={<Shell />}>
-        <Route index element={<Navigate to="/overview" replace />} />
-        <Route path="overview" element={
-          <Suspense fallback={<PageFallback />}>
-            <Overview />
-          </Suspense>
+    <Suspense fallback={<PageFallback />}>
+      <Routes>
+        {/* Auth Routes */}
+        <Route path="/auth/login" element={<Login />} />
+        <Route path="/auth/signup" element={<Signup />} />
+        <Route path="/auth/reset-password" element={<ResetPassword />} />
+
+        {/* Tenant Onboarding (Protected) */}
+        <Route path="/app/onboarding" element={
+          <ProtectedRoute>
+            <Onboarding />
+          </ProtectedRoute>
         } />
-        <Route path="forecasts" element={
-          <Suspense fallback={<PageFallback />}>
-            <Forecasts />
-          </Suspense>
-        } />
-        <Route path="inventory" element={
-          <Suspense fallback={<PageFallback />}>
-            <Inventory />
-          </Suspense>
-        } />
-        <Route path="analytics" element={
-          <Suspense fallback={<PageFallback />}>
-            <Analytics />
-          </Suspense>
-        } />
-        <Route path="centers" element={
-          <Suspense fallback={<PageFallback />}>
-            <Centers />
-          </Suspense>
-        } />
-        <Route path="centers/:id" element={
-          <Suspense fallback={<PageFallback />}>
-            <CenterDetail />
-          </Suspense>
-        } />
-        <Route path="meals" element={
-          <Suspense fallback={<PageFallback />}>
-            <Meals />
-          </Suspense>
-        } />
-        <Route path="meals/:id" element={
-          <Suspense fallback={<PageFallback />}>
-            <MealDetail />
-          </Suspense>
-        } />
-      </Route>
-    </Routes>
+
+        {/* Tenant SaaS Application Shell */}
+        <Route path="/app" element={
+          <ProtectedRoute>
+            <TenantShell />
+          </ProtectedRoute>
+        }>
+          <Route index element={<Navigate to="/app/overview" replace />} />
+          <Route path="overview" element={<TenantOverview />} />
+          <Route path="upload" element={<UploadPOS />} />
+          <Route path="forecasts" element={<TenantForecasts />} />
+          <Route path="inventory" element={<TenantInventory />} />
+          <Route path="analytics" element={<TenantAnalytics />} />
+          <Route path="menu" element={<TenantMenu />} />
+          <Route path="branches" element={<TenantBranches />} />
+          <Route path="settings" element={<TenantSettings />} />
+        </Route>
+
+        {/* Kaggle Demo Workspace Shell (Public / Unauthenticated default) */}
+        <Route path="/" element={<Shell />}>
+          <Route index element={<Navigate to="/overview" replace />} />
+          <Route path="overview" element={<Overview />} />
+          <Route path="forecasts" element={<Forecasts />} />
+          <Route path="inventory" element={<Inventory />} />
+          <Route path="analytics" element={<Analytics />} />
+          <Route path="centers" element={<Centers />} />
+          <Route path="centers/:id" element={<CenterDetail />} />
+          <Route path="meals" element={<Meals />} />
+          <Route path="meals/:id" element={<MealDetail />} />
+        </Route>
+
+        {/* Catch-all redirect to Demo Overview */}
+        <Route path="*" element={<Navigate to="/overview" replace />} />
+      </Routes>
+    </Suspense>
   )
 }
 
