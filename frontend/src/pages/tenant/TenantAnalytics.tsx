@@ -4,16 +4,10 @@ import { api } from '../../lib/api'
 import {
   TrendingUp,
   ShoppingBag,
-  IndianRupee,
   Calendar,
-  Layers,
-  ArrowUpRight,
-  ArrowDownRight,
   Percent,
-  CheckCircle2,
   RefreshCw,
   AlertCircle,
-  Building2,
   Tag,
   BarChart3
 } from 'lucide-react'
@@ -179,6 +173,23 @@ export function TenantAnalytics() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          {/* Category filter */}
+          {analytics?.category_distribution && analytics.category_distribution.length > 0 && (
+            <select
+              value={selectedCategory}
+              aria-label="Filter by category"
+              onChange={e => setSelectedCategory(e.target.value)}
+              className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-[var(--color-surface-alt)] border border-[var(--color-border-subtle)] text-[var(--color-text)] focus:outline-none cursor-pointer"
+            >
+              <option value="All">All Categories</option>
+              {analytics.category_distribution.map(cat => (
+                <option key={cat.category} value={cat.category}>
+                  {cat.category}
+                </option>
+              ))}
+            </select>
+          )}
+
           {/* Date range filter */}
           <div className="flex items-center bg-[var(--color-surface-alt)] p-1 rounded-lg border border-[var(--color-border-subtle)]">
             {(['30d', '60d', 'all'] as const).map(range => (

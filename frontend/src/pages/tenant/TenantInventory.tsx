@@ -4,17 +4,13 @@ import { useAppContext, type BufferValue } from '../../context/AppContext'
 import { api } from '../../lib/api'
 import {
   Package,
-  Layers,
   Search,
   Download,
   AlertCircle,
-  TrendingUp,
   Info,
   Calendar,
   CheckCircle2,
-  RefreshCw,
-  Sparkles,
-  ArrowUpDown
+  RefreshCw
 } from 'lucide-react'
 
 interface InventoryItem {

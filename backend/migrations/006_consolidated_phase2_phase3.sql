@@ -37,6 +37,10 @@ ADD COLUMN IF NOT EXISTS discontinued_date DATE DEFAULT NULL;
 ALTER TABLE public.restaurant_branches
 ADD COLUMN IF NOT EXISTS operating_days VARCHAR(50) NOT NULL DEFAULT 'mon,tue,wed,thu,fri,sat,sun';
 
+-- Add cuisine column to public.restaurants for culinary categorization
+ALTER TABLE public.restaurants
+ADD COLUMN IF NOT EXISTS cuisine VARCHAR(100);
+
 -- Create branch_closures table for explicit holiday/maintenance calendar
 CREATE TABLE IF NOT EXISTS public.branch_closures (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

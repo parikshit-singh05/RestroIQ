@@ -52,3 +52,7 @@ app.include_router(operations_router, prefix=settings.API_V1_STR)
 @app.get("/")
 def root():
     return {"message": "Welcome to the RestroIQ API."}
+
+@app.get("/health")
+def health_check_root():
+    return {"status": "ok", "service": "RestroIQ API"}

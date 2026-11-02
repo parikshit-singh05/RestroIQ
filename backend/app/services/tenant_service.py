@@ -227,6 +227,7 @@ class TenantService:
             "state": data.state,
             "is_active": True,
             "is_primary": data.is_primary,
+            "operating_days": getattr(data, "operating_days", None) or "mon,tue,wed,thu,fri,sat,sun",
             "created_at": now_str
         }
         if data.is_primary:

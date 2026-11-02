@@ -31,6 +31,7 @@ class BranchCreate(BaseModel):
     city: str = Field(..., min_length=2, max_length=100)
     state: Optional[str] = None
     is_primary: bool = False
+    operating_days: Optional[str] = "mon,tue,wed,thu,fri,sat,sun"
 
 class BranchResponse(BaseModel):
     id: str

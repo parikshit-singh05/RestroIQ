@@ -1064,7 +1064,7 @@ class IngestionService:
                 print(f"[IngestionService] Supabase create_signed_url note: {e}")
 
         if not signed_url:
-            signed_url = f"{settings.SUPABASE_URL}/storage/v1/object/sign/restaurant-uploads/{storage_path}?token=mock_signed_url_token"
+            signed_url = f"{settings.SUPABASE_URL}/storage/v1/object/sign/restaurant-uploads/{storage_path}"
 
         return {
             "upload_id": upload_id,
@@ -1308,6 +1308,40 @@ class IngestionService:
 
         with open(csv_path, "rb") as f:
             content = f.read()
+
+        # Ensure sample branches exist so the sample file can map to registered branches
+        from app.schemas.tenant_schemas import BranchCreate
+        branches = tenant_service.list_branches(restaurant_id)
+        existing_names = [b.branch_name.lower() for b in branches]
+        existing_codes = [b.branch_code.lower() for b in branches]
+
+        if not any("indiranagar" in n for n in existing_names) and "ind-01" not in existing_codes:
+            try:
+                tenant_service.create_branch(restaurant_id, BranchCreate(
+                    branch_code="IND-01",
+                    branch_name="Indiranagar, Bengaluru",
+                    city="Bengaluru",
+                    state="Karnataka",
+                    is_primary=(len(branches) == 0)
+                ))
+            except Exception:
+                pass
+
+        branches = tenant_service.list_branches(restaurant_id)
+        existing_names = [b.branch_name.lower() for b in branches]
+        existing_codes = [b.branch_code.lower() for b in branches]
+
+        if not any("koramangala" in n for n in existing_names) and "kor-02" not in existing_codes:
+            try:
+                tenant_service.create_branch(restaurant_id, BranchCreate(
+                    branch_code="KOR-02",
+                    branch_name="Koramangala, Bengaluru",
+                    city="Bengaluru",
+                    state="Karnataka",
+                    is_primary=False
+                ))
+            except Exception:
+                pass
 
         mapping = {
             "order_date": "Bill_Date",
