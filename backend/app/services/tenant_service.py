@@ -60,21 +60,48 @@ class TenantService:
 
     def create_restaurant(self, user_id: str, user_email: str, data: RestaurantCreate, user_jwt: Optional[str] = None) -> RestaurantResponse:
         self.register_user_profile(user_id, user_email)
-        restaurant_id = str(uuid.uuid4())
-        slug = self._slugify(data.name)
         now_str = datetime.now(timezone.utc).isoformat()
 
-        rest_record = {
-            "id": restaurant_id,
-            "name": data.name,
-            "slug": slug,
-            "currency": data.currency or "INR",
-            "currency_symbol": "₹" if (data.currency or "INR").upper() == "INR" else "$",
-            "timezone": data.timezone or "Asia/Kolkata",
-            "operational_model": data.operational_model or "dine_in_and_delivery",
-            "created_at": now_str,
-            "updated_at": now_str
-        }
+        # Idempotency check: if user already owns or admins an active restaurant with this name, reuse to prevent retry duplicates
+        existing_rest = None
+        if settings.SUPABASE_URL and settings.SUPABASE_KEY and user_jwt:
+            try:
+                client = get_tenant_supabase_client(user_jwt)
+                chk = client.table("restaurants").select("id, name, slug, currency, timezone, operational_model, created_at").eq("name", data.name).execute()
+                if chk.data:
+                    for r in chk.data:
+                        role = self.resolve_user_membership(r["id"], user_id, user_jwt=user_jwt)
+                        if role and has_sufficient_role(role, "admin"):
+                            existing_rest = r
+                            break
+            except Exception:
+                pass
+
+        if not existing_rest:
+            for r_id, r in self._restaurants.items():
+                if r.get("name") == data.name and any(m["user_id"] == user_id and has_sufficient_role(m["role"], "admin") for m in self._memberships.get(r_id, [])):
+                    existing_rest = r
+                    break
+
+        if existing_rest:
+            restaurant_id = existing_rest["id"]
+            slug = existing_rest.get("slug") or self._slugify(data.name)
+            rest_record = existing_rest
+        else:
+            restaurant_id = str(uuid.uuid4())
+            slug = self._slugify(data.name)
+            rest_record = {
+                "id": restaurant_id,
+                "created_by": user_id,
+                "name": data.name,
+                "slug": slug,
+                "currency": data.currency or "INR",
+                "currency_symbol": "₹" if (data.currency or "INR").upper() == "INR" else "$",
+                "timezone": data.timezone or "Asia/Kolkata",
+                "operational_model": data.operational_model or "dine_in_and_delivery",
+                "created_at": now_str,
+                "updated_at": now_str
+            }
 
         # Creator automatically becomes 'owner' in restaurant_memberships
         membership_id = str(uuid.uuid4())
@@ -86,39 +113,44 @@ class TenantService:
             "created_at": now_str
         }
 
-        # Create default primary branch
+        # Primary branch configuration (use customized onboarding fields if provided)
         branch_id = str(uuid.uuid4())
+        primary_code = (getattr(data, "branch_code", None) or "MAIN").upper()
+        primary_name = getattr(data, "branch_name", None) or f"{data.name} - Primary Outlet"
+        primary_city = getattr(data, "city", None) or "Bengaluru"
+        primary_state = getattr(data, "state", None) or "Karnataka"
+
         default_branch = {
             "id": branch_id,
             "restaurant_id": restaurant_id,
-            "branch_code": "MAIN",
-            "branch_name": f"{data.name} - Primary Outlet",
-            "city": "Bengaluru",
-            "state": "Karnataka",
+            "branch_code": primary_code,
+            "branch_name": primary_name,
+            "city": primary_city,
+            "state": primary_state,
             "is_active": True,
             "is_primary": True,
             "operating_days": "mon,tue,wed,thu,fri,sat,sun",
             "created_at": now_str
         }
 
-        # Create default operational settings
+        # Operational settings configuration (use customized preferences if provided)
         default_settings = {
             "restaurant_id": restaurant_id,
-            "default_prep_buffer": 10,
-            "default_forecasting_frequency": "daily",
+            "default_prep_buffer": getattr(data, "default_prep_buffer", None) or 10,
+            "default_forecasting_frequency": getattr(data, "default_forecasting_frequency", None) or "daily",
             "auto_forecast_on_upload": True,
             "timezone": data.timezone or "Asia/Kolkata",
             "updated_at": now_str
         }
 
-        # Primary live Supabase write
+        # Primary live Supabase write with idempotent upserts
         if settings.SUPABASE_URL and settings.SUPABASE_KEY and user_jwt:
             try:
                 client = get_tenant_supabase_client(user_jwt)
-                client.table("restaurants").insert(rest_record).execute()
-                client.table("restaurant_memberships").insert(owner_membership).execute()
-                client.table("restaurant_branches").insert(default_branch).execute()
-                client.table("restaurant_settings").insert(default_settings).execute()
+                client.table("restaurants").upsert(rest_record).execute()
+                client.table("restaurant_memberships").upsert(owner_membership, on_conflict="restaurant_id,user_id").execute()
+                client.table("restaurant_branches").upsert(default_branch, on_conflict="restaurant_id,branch_code").execute()
+                client.table("restaurant_settings").upsert(default_settings, on_conflict="restaurant_id").execute()
             except Exception as e:
                 if not settings.allow_in_memory_fallback:
                     raise HTTPException(
@@ -134,20 +166,24 @@ class TenantService:
 
         # In-memory store for fast local resolution in dev/test
         self._restaurants[restaurant_id] = rest_record
-        self._memberships[restaurant_id] = [owner_membership]
-        self._branches[restaurant_id] = [default_branch]
+        m_list = self._memberships.setdefault(restaurant_id, [])
+        if not any(m["user_id"] == user_id for m in m_list):
+            m_list.append(owner_membership)
+        b_list = self._branches.setdefault(restaurant_id, [])
+        if not any(b["branch_code"].upper() == primary_code.upper() for b in b_list):
+            b_list.append(default_branch)
         self._settings[restaurant_id] = default_settings
 
         return RestaurantResponse(
             id=restaurant_id,
             name=rest_record["name"],
             slug=rest_record["slug"],
-            currency=rest_record["currency"],
-            currency_symbol=rest_record["currency_symbol"],
-            timezone=rest_record["timezone"],
-            operational_model=rest_record["operational_model"],
+            currency=rest_record.get("currency", "INR"),
+            currency_symbol=rest_record.get("currency_symbol", "₹"),
+            timezone=rest_record.get("timezone", "Asia/Kolkata"),
+            operational_model=rest_record.get("operational_model", "dine_in_and_delivery"),
             user_role="owner",
-            created_at=now_str
+            created_at=rest_record.get("created_at") or now_str
         )
 
     def list_user_restaurants(self, user_id: str, user_jwt: Optional[str] = None) -> List[RestaurantResponse]:
@@ -181,12 +217,16 @@ class TenantService:
                     detail=f"Database query error: {e}"
                 )
 
-        # In test / development mode: check in-memory store first
+        # In test / development mode: check in-memory store first (deduplicated by restaurant_id)
+        seen_ids = set()
         for rest_id, members in self._memberships.items():
+            if rest_id in seen_ids:
+                continue
             for m in members:
                 if m["user_id"] == user_id:
                     rest = self._restaurants.get(rest_id)
                     if rest:
+                        seen_ids.add(rest_id)
                         results.append(RestaurantResponse(
                             id=rest["id"],
                             name=rest["name"],
@@ -198,6 +238,7 @@ class TenantService:
                             user_role=m["role"],
                             created_at=rest["created_at"]
                         ))
+                        break
 
         # Supabase fallback in dev/test if local store is empty
         if not results and settings.SUPABASE_URL and settings.SUPABASE_KEY and user_jwt:
@@ -318,11 +359,52 @@ class TenantService:
 
     def create_branch(self, restaurant_id: str, data: BranchCreate, user_jwt: Optional[str] = None) -> BranchResponse:
         branches = self._branches.setdefault(restaurant_id, [])
-        if any(b["branch_code"].upper() == data.branch_code.upper() for b in branches):
-            raise ValueError(f"Branch code '{data.branch_code}' already exists in this restaurant.")
+        now_str = datetime.now(timezone.utc).isoformat()
+
+        # Idempotent branch code check: if branch code already exists, update and return it
+        for b in branches:
+            if b["branch_code"].upper() == data.branch_code.upper():
+                b["branch_name"] = data.branch_name
+                b["city"] = data.city
+                b["state"] = data.state
+                b["is_primary"] = data.is_primary
+                if settings.SUPABASE_URL and settings.SUPABASE_KEY and user_jwt:
+                    try:
+                        client = get_tenant_supabase_client(user_jwt)
+                        client.table("restaurant_branches").update({
+                            "branch_name": data.branch_name,
+                            "city": data.city,
+                            "state": data.state,
+                            "is_primary": data.is_primary,
+                            "updated_at": now_str
+                        }).eq("id", b["id"]).execute()
+                    except Exception:
+                        pass
+                return BranchResponse(**b)
+
+        # If user is creating primary branch and only existing branch is placeholder 'MAIN', update MAIN in place
+        if data.is_primary and len(branches) == 1 and branches[0]["branch_code"].upper() == "MAIN":
+            main_b = branches[0]
+            main_b["branch_code"] = data.branch_code.upper()
+            main_b["branch_name"] = data.branch_name
+            main_b["city"] = data.city
+            main_b["state"] = data.state
+            main_b["operating_days"] = getattr(data, "operating_days", None) or main_b.get("operating_days", "mon,tue,wed,thu,fri,sat,sun")
+            if settings.SUPABASE_URL and settings.SUPABASE_KEY and user_jwt:
+                try:
+                    client = get_tenant_supabase_client(user_jwt)
+                    client.table("restaurant_branches").update({
+                        "branch_code": data.branch_code.upper(),
+                        "branch_name": data.branch_name,
+                        "city": data.city,
+                        "state": data.state,
+                        "updated_at": now_str
+                    }).eq("id", main_b["id"]).execute()
+                except Exception:
+                    pass
+            return BranchResponse(**main_b)
 
         branch_id = str(uuid.uuid4())
-        now_str = datetime.now(timezone.utc).isoformat()
         new_branch = {
             "id": branch_id,
             "restaurant_id": restaurant_id,
@@ -341,7 +423,7 @@ class TenantService:
                 client = get_tenant_supabase_client(user_jwt)
                 if data.is_primary:
                     client.table("restaurant_branches").update({"is_primary": False}).eq("restaurant_id", restaurant_id).execute()
-                client.table("restaurant_branches").insert(new_branch).execute()
+                client.table("restaurant_branches").upsert(new_branch, on_conflict="restaurant_id,branch_code").execute()
             except Exception as e:
                 if not settings.allow_in_memory_fallback:
                     raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Database write error: {e}")
@@ -508,9 +590,23 @@ class TenantService:
         if settings.SUPABASE_URL and settings.SUPABASE_KEY and user_jwt:
             try:
                 client = get_tenant_supabase_client(user_jwt)
-                res = client.table("restaurant_settings").select("*").eq("restaurant_id", restaurant_id).single().execute()
-                if res.data:
-                    return RestaurantSettingsResponse(**res.data)
+                res = client.table("restaurant_settings").select("*").eq("restaurant_id", restaurant_id).execute()
+                if res.data and len(res.data) > 0:
+                    self._settings[restaurant_id] = res.data[0]
+                    return RestaurantSettingsResponse(**res.data[0])
+                else:
+                    # Safe idempotent auto-initialization for newly created restaurants
+                    default_settings = {
+                        "restaurant_id": restaurant_id,
+                        "default_prep_buffer": 10,
+                        "default_forecasting_frequency": "daily",
+                        "auto_forecast_on_upload": True,
+                        "timezone": "Asia/Kolkata",
+                        "updated_at": datetime.now(timezone.utc).isoformat()
+                    }
+                    client.table("restaurant_settings").upsert(default_settings, on_conflict="restaurant_id").execute()
+                    self._settings[restaurant_id] = default_settings
+                    return RestaurantSettingsResponse(**default_settings)
             except Exception as e:
                 if not settings.allow_in_memory_fallback:
                     raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Database query error: {e}")
@@ -519,7 +615,8 @@ class TenantService:
             "restaurant_id": restaurant_id,
             "default_prep_buffer": 10,
             "default_forecasting_frequency": "daily",
-            "auto_forecast_on_upload": True
+            "auto_forecast_on_upload": True,
+            "timezone": "Asia/Kolkata"
         })
         return RestaurantSettingsResponse(**st)
 
@@ -528,12 +625,26 @@ class TenantService:
         if not actor_role or not has_sufficient_role(actor_role, "admin"):
             raise PermissionError("Only admins or owners can modify operational settings.")
 
-        current = self._settings.setdefault(restaurant_id, {
-            "restaurant_id": restaurant_id,
-            "default_prep_buffer": 10,
-            "default_forecasting_frequency": "daily",
-            "auto_forecast_on_upload": True
-        })
+        current = self._settings.get(restaurant_id)
+        if not current:
+            # Attempt to fetch from DB first
+            if settings.SUPABASE_URL and settings.SUPABASE_KEY and user_jwt:
+                try:
+                    client = get_tenant_supabase_client(user_jwt)
+                    res = client.table("restaurant_settings").select("*").eq("restaurant_id", restaurant_id).execute()
+                    if res.data and len(res.data) > 0:
+                        current = res.data[0]
+                except Exception:
+                    pass
+            if not current:
+                current = {
+                    "restaurant_id": restaurant_id,
+                    "default_prep_buffer": 10,
+                    "default_forecasting_frequency": "daily",
+                    "auto_forecast_on_upload": True,
+                    "timezone": "Asia/Kolkata"
+                }
+
         if data.default_prep_buffer is not None:
             if data.default_prep_buffer not in (0, 10, 15, 20):
                 raise ValueError("Buffer must be one of: 0, 10, 15, 20.")
@@ -544,13 +655,17 @@ class TenantService:
             current["default_forecasting_frequency"] = data.default_forecasting_frequency
         if data.auto_forecast_on_upload is not None:
             current["auto_forecast_on_upload"] = data.auto_forecast_on_upload
+        if getattr(data, "timezone", None) is not None:
+            current["timezone"] = data.timezone
 
-        current["updated_at"] = datetime.now(timezone.utc).isoformat()
+        now_str = datetime.now(timezone.utc).isoformat()
+        current["updated_at"] = now_str
+        self._settings[restaurant_id] = current
 
         if settings.SUPABASE_URL and settings.SUPABASE_KEY and user_jwt:
             try:
                 client = get_tenant_supabase_client(user_jwt)
-                client.table("restaurant_settings").upsert(current).execute()
+                client.table("restaurant_settings").upsert(current, on_conflict="restaurant_id").execute()
             except Exception as e:
                 if not settings.allow_in_memory_fallback:
                     raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Database update error: {e}")

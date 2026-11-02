@@ -57,38 +57,67 @@ class ForecastingService:
         if settings.SUPABASE_URL and settings.SUPABASE_KEY and user_jwt:
             try:
                 client = get_tenant_supabase_client(user_jwt)
-                res = client.table("restaurant_settings").select("*").eq("restaurant_id", restaurant_id).single().execute()
-                if res.data and isinstance(res.data, dict):
-                    return TenantSettingsSchema.model_validate(res.data)
+                res = client.table("restaurant_settings").select("*").eq("restaurant_id", restaurant_id).execute()
+                if res.data and len(res.data) > 0 and isinstance(res.data[0], dict):
+                    self._settings[restaurant_id] = res.data[0]
+                    return TenantSettingsSchema.model_validate(res.data[0])
+                else:
+                    # Safe idempotent auto-initialization if missing
+                    now_str = datetime.now(timezone.utc).isoformat()
+                    default_settings = {
+                        "restaurant_id": restaurant_id,
+                        "default_prep_buffer": 10,
+                        "default_forecasting_frequency": "daily",
+                        "auto_forecast_on_upload": True,
+                        "timezone": "Asia/Kolkata",
+                        "created_at": now_str,
+                        "updated_at": now_str
+                    }
+                    client.table("restaurant_settings").upsert(default_settings, on_conflict="restaurant_id").execute()
+                    self._settings[restaurant_id] = default_settings
+                    return TenantSettingsSchema(**default_settings)
             except Exception:
                 pass
 
         # In-memory store
         if restaurant_id not in self._settings:
+            now_str = datetime.now(timezone.utc).isoformat()
             self._settings[restaurant_id] = {
                 "restaurant_id": restaurant_id,
                 "default_prep_buffer": 10,
                 "default_forecasting_frequency": "daily",
                 "auto_forecast_on_upload": True,
                 "timezone": "Asia/Kolkata",
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "updated_at": datetime.now(timezone.utc).isoformat()
+                "created_at": now_str,
+                "updated_at": now_str
             }
         return TenantSettingsSchema(**self._settings[restaurant_id])
 
     def update_restaurant_settings(
-        self, restaurant_id: str, update: UpdateTenantSettingsRequest, user_jwt: Optional[str] = None
+        self,
+        restaurant_id: str,
+        update: Optional[UpdateTenantSettingsRequest] = None,
+        prep_buffer: Optional[int] = None,
+        frequency: Optional[str] = None,
+        auto_forecast_on_upload: Optional[bool] = None,
+        timezone: Optional[str] = None,
+        user_jwt: Optional[str] = None
     ) -> TenantSettingsSchema:
-        """Updates restaurant forecasting and buffer preferences."""
+        """Updates restaurant forecasting and buffer preferences safely supporting both schema and keyword invocations."""
         current = self.get_restaurant_settings(restaurant_id, user_jwt).model_dump()
-        if update.default_prep_buffer is not None:
-            current["default_prep_buffer"] = update.default_prep_buffer
-        if update.default_forecasting_frequency is not None:
-            current["default_forecasting_frequency"] = update.default_forecasting_frequency
-        if update.auto_forecast_on_upload is not None:
-            current["auto_forecast_on_upload"] = update.auto_forecast_on_upload
-        if update.timezone is not None:
-            current["timezone"] = update.timezone
+        buffer_val = (update.default_prep_buffer if update else None) or prep_buffer
+        freq_val = (update.default_forecasting_frequency if update else None) or frequency
+        auto_val = (update.auto_forecast_on_upload if update else None) if update and update.auto_forecast_on_upload is not None else auto_forecast_on_upload
+        tz_val = (update.timezone if update else None) or timezone
+
+        if buffer_val is not None:
+            current["default_prep_buffer"] = buffer_val
+        if freq_val is not None:
+            current["default_forecasting_frequency"] = freq_val
+        if auto_val is not None:
+            current["auto_forecast_on_upload"] = auto_val
+        if tz_val is not None:
+            current["timezone"] = tz_val
         current["updated_at"] = datetime.now(timezone.utc).isoformat()
 
         if settings.SUPABASE_URL and settings.SUPABASE_KEY and user_jwt:

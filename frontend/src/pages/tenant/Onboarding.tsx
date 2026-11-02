@@ -18,6 +18,7 @@ export function Onboarding() {
   const [step, setStep] = useState<number>(1)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [createdRestaurantId, setCreatedRestaurantId] = useState<string | null>(null)
 
   // Step 1: Restaurant Info
   const [restaurantName, setRestaurantName] = useState('The Spice Garden Cafe & Bistro')
@@ -58,19 +59,29 @@ export function Onboarding() {
     setSubmitting(true)
 
     try {
-      // 1. Create restaurant
-      const restRes = await api.post('/tenant/restaurants', {
-        name: restaurantName,
-        currency,
-        timezone,
-        operational_model: operationalModel
-      }, {
-        headers: { Authorization: `Bearer ${session?.access_token}` }
-      })
+      // 1. Create or reuse restaurant (idempotent across retry)
+      let restaurantId = createdRestaurantId
+      if (!restaurantId) {
+        const restRes = await api.post('/tenant/restaurants', {
+          name: restaurantName,
+          currency,
+          timezone,
+          operational_model: operationalModel,
+          branch_name: branchName,
+          branch_code: branchCode.toUpperCase(),
+          city,
+          state,
+          default_prep_buffer: prepBuffer,
+          default_forecasting_frequency: forecastFrequency
+        }, {
+          headers: { Authorization: `Bearer ${session?.access_token}` }
+        })
 
-      const restaurantId = restRes.data.id
+        restaurantId = restRes.data.id
+        setCreatedRestaurantId(restaurantId)
+      }
 
-      // 2. Create primary branch if user customized branch fields
+      // 2. Ensure primary outlet branch details are synced
       try {
         await api.post(`/tenant/restaurants/${restaurantId}/branches`, {
           branch_code: branchCode.toUpperCase(),
@@ -82,11 +93,10 @@ export function Onboarding() {
           headers: { Authorization: `Bearer ${session?.access_token}` }
         })
       } catch (branchErr) {
-        // Fallback: Default branch is auto-created by backend create_restaurant
-        console.warn('Custom branch creation notice:', branchErr)
+        console.warn('Primary branch sync note:', branchErr)
       }
 
-      // 3. Update settings
+      // 3. Ensure operational preferences are synced
       try {
         await api.put(`/tenant/restaurants/${restaurantId}/settings`, {
           default_prep_buffer: prepBuffer,
@@ -96,7 +106,7 @@ export function Onboarding() {
           headers: { Authorization: `Bearer ${session?.access_token}` }
         })
       } catch (settingsErr) {
-        console.warn('Settings update notice:', settingsErr)
+        console.warn('Operational preferences sync note:', settingsErr)
       }
 
       // Refresh tenants in context and route to upload wizard
@@ -105,7 +115,8 @@ export function Onboarding() {
         state: { welcome: `Welcome to ${restaurantName}! Upload your sales data or load sample data to begin.` }
       })
     } catch (err: any) {
-      setError(err?.response?.data?.detail || err?.message || 'Failed to complete workspace setup.')
+      const msg = err?.response?.data?.detail || err?.message || 'Failed to complete workspace setup.'
+      setError(typeof msg === 'string' ? msg : JSON.stringify(msg))
     } finally {
       setSubmitting(false)
     }

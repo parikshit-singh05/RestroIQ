@@ -13,6 +13,12 @@ class RestaurantCreate(BaseModel):
     currency: str = Field("INR", max_length=10, description="ISO currency code")
     timezone: str = Field("Asia/Kolkata", max_length=50, description="Operating timezone")
     operational_model: str = Field("dine_in_and_delivery", description="Operating format")
+    branch_name: Optional[str] = None
+    branch_code: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    default_prep_buffer: Optional[int] = 10
+    default_forecasting_frequency: Optional[str] = "daily"
 
 class RestaurantResponse(BaseModel):
     id: str
@@ -63,12 +69,14 @@ class RestaurantSettingsResponse(BaseModel):
     default_prep_buffer: int = 10
     default_forecasting_frequency: str = "daily"
     auto_forecast_on_upload: bool = True
+    timezone: str = "Asia/Kolkata"
     updated_at: Optional[str] = None
 
 class RestaurantSettingsUpdate(BaseModel):
     default_prep_buffer: Optional[int] = Field(None, description="0, 10, 15, or 20")
     default_forecasting_frequency: Optional[str] = Field(None, description="'daily' or 'weekly'")
     auto_forecast_on_upload: Optional[bool] = None
+    timezone: Optional[str] = None
 
 class TenantContext(BaseModel):
     user_id: str
@@ -76,4 +84,3 @@ class TenantContext(BaseModel):
     restaurant_id: str
     role: str
     raw_jwt: Optional[str] = None
-

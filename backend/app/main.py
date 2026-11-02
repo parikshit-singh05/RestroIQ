@@ -43,11 +43,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Standard API V1 routes
 app.include_router(demo_router, prefix=settings.API_V1_STR)
 app.include_router(tenant_router, prefix=settings.API_V1_STR)
 app.include_router(ingestion_router, prefix=settings.API_V1_STR)
 app.include_router(forecasting_router, prefix=settings.API_V1_STR)
 app.include_router(operations_router, prefix=settings.API_V1_STR)
+
+# Also mount at root to support client configurations with or without /api/v1 prefix
+app.include_router(demo_router)
+app.include_router(tenant_router)
+app.include_router(ingestion_router)
+app.include_router(forecasting_router)
+app.include_router(operations_router)
 
 @app.get("/")
 def root():
